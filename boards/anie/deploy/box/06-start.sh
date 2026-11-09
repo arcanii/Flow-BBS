@@ -26,5 +26,5 @@ if [ "$db" != healthy ] || [ -z "$key" ]; then
   exit 1
 fi
 say "host key $(printf '%s\n' "$key" | ssh-keygen -lf - | head -n 1)"
-say "known_hosts line: [arcanii.dynu.net]:2222 $(printf '%s\n' "$key" | head -n 1 | cut -d' ' -f2-)"
+say "known_hosts line: [arcanii.dynu.net]:50768 $(printf '%s\n' "$key" | head -n 1 | cut -d' ' -f2-)"
 say "done"

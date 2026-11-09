@@ -1,7 +1,8 @@
 #!/bin/bash
 # Anie Solutions BBS on tkaniedev03, step 7: opens the board's port, 2222/tcp, in the host
 # firewall, from anywhere (Bryan's word: the internet as well). The board listens on IPv4 only.
-# The router's port forward (2222 to 192.168.50.210) is Bryan's own step; this opens the box alone.
+# The router's port forward (arcanii.dynu.net:50768 to 192.168.50.210:2222) is Bryan's own step;
+# this opens the box alone.
 # Refuses if ufw isn't active (then nothing here would decide who reaches the port). Running it
 # twice changes nothing the second time.
 set -euo pipefail

@@ -17,6 +17,7 @@ be signed from there.
 | volumes `anie-bbs_db`, `anie-bbs_home` | The database; the board's SSH host key |
 | `127.0.0.1:5440` | PostgreSQL, the box's loopback only |
 | `0.0.0.0:2222` | The board (the host's network, so ufw decides who reaches it) |
+| `arcanii.dynu.net:50768` | The board from the internet: the router forwards it to 192.168.50.210:2222 |
 
 **Keep a copy of `bbs.env` offline.** `ANIE_BBS_SECRET_KEY` seals every
 member's authenticator seed and keys their codes' hashes: a board without
@@ -36,7 +37,7 @@ opens no seed.
 | 5 | `05-check-mail.sh` | Read-only: `smtp.env` in shape, and Gmail lets the board log in |
 | 6 | `06-start.sh` | Both up; waits for SSH on 2222; prints the host key's fingerprint |
 | 7 | `07-firewall.sh` | ufw: 2222/tcp from anywhere |
-| — | Bryan, at the router | Forward TCP 2222 to 192.168.50.210:2222 |
+| — | Bryan, at the router | Forward TCP 50768 to 192.168.50.210:2222 |
 | — | Bryan, on the board | Apply as anyone does: handle, email, password, authenticator |
 | 8 | `08-backups.sh` | The nightly backup timer, and one backup now |
 | 9 | `09-sysop.sh` | Makes Bryan's handle the sysop |
@@ -57,11 +58,12 @@ says whether it's right without printing it.
 ## Calling it
 
 ```
-ssh -p 2222 guest@arcanii.dynu.net
+ssh -p 50768 guest@arcanii.dynu.net
 ```
 
-or from Flow's phonebook once it's listed (arcanii/Flow-BBS-List, with the
-host key `06-start.sh` printed).
+(`ssh -p 2222 guest@192.168.50.210` on the LAN), or from Flow's phonebook
+once it's listed (arcanii/Flow-BBS-List, with the host key `06-start.sh`
+printed: `SHA256:87Vz5v/WU2LpFblsOuncrVeEtDdHTpsXCOU4HsQw+8k`).
 
 ## Upkeep
 
