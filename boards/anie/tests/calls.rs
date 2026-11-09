@@ -61,6 +61,8 @@ impl Board {
             ("ANIE_BBS_MAIL", "dev".into()),
             ("ANIE_BBS_SCREENS", concat!(env!("CARGO_MANIFEST_DIR"), "/screens").into()),
             ("ANIE_BBS_HOST_KEY", dir.join("host_key").display().to_string()),
+            // A door that ends at once, standing in for flow-cat.
+            ("ANIE_BBS_NEKO", if cfg!(windows) { "hostname" } else { "true" }.into()),
         ];
         let (settings, _) = Settings::from_lookup(|k| env.iter().find(|(n, _)| *n == k).map(|(_, v)| v.clone())).unwrap();
         let mail = Arc::new(Memory::default());
@@ -459,4 +461,34 @@ async fn a_forgotten_password_is_set_anew_by_a_code_to_the_members_address() {
     erin.until("Your choice: ").await;
     let said = erin.log_in("erin", "erin's new password", &next_code(&seed, &mut last).await).await;
     assert!(said.contains("The bulletin"), "{said:?}");
+}
+
+#[tokio::test]
+async fn a_guest_finds_the_demonstrations_neko_hands_the_call_back_and_the_gallery_draws_in_flow() {
+    let Some(board) = Board::new("demos") else { return };
+    let mut guest = Caller::dial(&board).await;
+    guest.send("d").await;
+    let said = guest.until("Your choice: ").await;
+    assert!(plain(&said).contains("Demonstrations") && said.contains("Neko, the cat that chases your pointer"), "{said:?}");
+
+    guest.send("g").await;
+    let said = guest.go_on().await;
+    assert!(said.contains("_Ga=T"), "the picture, sent to Flow: {said:?}");
+    assert!(said.contains("_ratty;g;r;id="), "the crystal, registered");
+    assert!(said.contains("7731;fx=sound;sound=chime"), "the sound");
+    assert!(!said.contains("[Flow BBS, a picture]"), "no words in brackets for Flow");
+    guest.until("Your choice: ").await;
+
+    guest.send("n").await;
+    if cfg!(windows) {
+        // Windows' pty asks the caller's terminal where its cursor is first.
+        guest.until("[6n").await;
+        guest.send("[1;1R").await;
+    }
+    let said = guest.until("Your choice: ").await;
+    assert!(!said.contains("won't come out"), "the door opened, ended, and handed the call back: {said:?}");
+    assert!(said.contains("[0m[?25h"), "plain colors and the cursor after it");
+    guest.send("b").await;
+    guest.until("Your choice: ").await;
+    guest.send("q").await;
 }

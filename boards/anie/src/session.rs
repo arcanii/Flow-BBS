@@ -115,6 +115,7 @@ impl Session<'_> {
             Item::new('a', "Apply for membership"),
             Item::new('f', "Forgot your password"),
             Item::new('i', "About this board"),
+            Item::new('d', "Demonstrations: Neko, and what Flow can show"),
             Item::new('w', "Who's on"),
             Item::new('q', "Hang up"),
         ];
@@ -136,7 +137,8 @@ impl Session<'_> {
                     self.call.show(&self.bbs.screens.about, &values)?;
                     self.pause()?;
                 }
-                Some(4) => self.whos_on()?,
+                Some(4) => self.demos()?,
+                Some(5) => self.whos_on()?,
                 _ => {
                     self.call.say(" Goodbye.\n")?;
                     return Ok(());
@@ -157,7 +159,7 @@ impl Session<'_> {
             }
             self.doing("At the main menu");
             let me = self.me().clone();
-            let mut items = vec![Item::new('f', "Forums"), Item::new('b', "Bug tracker"), Item::new('w', "Who's on"), Item::new('n', "The bulletin"), Item::new('p', "Profile and security")];
+            let mut items = vec![Item::new('f', "Forums"), Item::new('b', "Bug tracker"), Item::new('d', "Demonstrations"), Item::new('w', "Who's on"), Item::new('n', "The bulletin"), Item::new('p', "Profile and security")];
             if me.role == Role::Sysop {
                 items.push(Item::new('s', "Sysop"));
             }
@@ -168,6 +170,7 @@ impl Session<'_> {
             match items[chosen].key {
                 'f' => self.forums()?,
                 'b' => self.tracker()?,
+                'd' => self.demos()?,
                 'w' => self.whos_on()?,
                 'n' => self.bulletin()?,
                 'p' => self.profile()?,

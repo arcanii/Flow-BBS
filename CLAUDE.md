@@ -78,7 +78,9 @@ ssh -p 2222 guest@localhost             # call it
 - `boards/anie`: `anie-bbs`, the Anie Solutions BBS, a board in code on
   PostgreSQL (the sync `postgres` crate, a connection a call):
   `account.rs` (applying, emailed codes, the authenticator, logins,
-  recovery, profile), `forums.rs`, `tracker.rs`, `sysop.rs`, `crypto.rs`
+  recovery, profile), `forums.rs`, `tracker.rs`, `sysop.rs`, `demo.rs`
+  (the demonstrations: Neko's door, `ANIE_BBS_NEKO`, and the gallery;
+  its pictures in `screens/pictures`), `crypto.rs`
   (United One's rules for codes), `mail.rs` (Gmail by SMTP), `db.rs`
   (migrations in `migrations/`, errors logged by SQLSTATE only). What a
   caller is told never says which part of a login was wrong, or whether

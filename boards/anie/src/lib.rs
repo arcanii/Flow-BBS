@@ -8,7 +8,9 @@
 //! recovery code, once each). Roles go member < staff < sysop: staff
 //! moderate the forums and triage bugs; the sysop runs the board from its
 //! sysop menu (applications, members and their roles, forums, products,
-//! the bulletin, the log).
+//! the bulletin, the log). Guests and members alike have the
+//! demonstrations: Neko (the door `flow-cat`) and a gallery of what Flow
+//! draws.
 
 pub mod crypto;
 pub mod db;
@@ -17,6 +19,7 @@ pub mod settings;
 pub mod ui;
 
 mod account;
+mod demo;
 mod forums;
 mod session;
 mod sysop;
@@ -29,7 +32,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use flow_bbs::{Call, Config, Screen};
+use flow_bbs::{Call, Config, Door, Screen};
 
 use crate::mail::Mailer;
 use crate::settings::Settings;
@@ -39,6 +42,8 @@ pub struct Bbs {
     pub settings: Settings,
     pub mailer: Box<dyn Mailer>,
     pub screens: Screens,
+    /// Neko's door, for the demonstrations.
+    pub neko: Door,
     /// Who's on now, by call.
     pub online: Mutex<BTreeMap<u64, Online>>,
     /// What's been tried from where, lately.
@@ -51,12 +56,14 @@ pub struct Screens {
     pub welcome: Screen,
     pub about: Screen,
     pub rules: Screen,
+    pub demos: Screen,
+    pub gallery: Screen,
 }
 
 impl Screens {
     pub fn read(folder: &std::path::Path) -> io::Result<Screens> {
         let one = |name: &str| Screen::read(&folder.join(format!("{name}.txt")), folder);
-        Ok(Screens { welcome: one("welcome")?, about: one("about")?, rules: one("rules")? })
+        Ok(Screens { welcome: one("welcome")?, about: one("about")?, rules: one("rules")?, demos: one("demos")?, gallery: one("gallery")? })
     }
 }
 
@@ -113,7 +120,8 @@ impl Bbs {
     /// The board, its screens read from its folder.
     pub fn new(settings: Settings, mailer: Box<dyn Mailer>) -> io::Result<Bbs> {
         let screens = Screens::read(&settings.screens)?;
-        Ok(Bbs { settings, mailer, screens, online: Mutex::default(), guard: Mutex::default(), next_call: AtomicU64::new(1) })
+        let neko = Door::new(settings.neko.clone(), Vec::<String>::new());
+        Ok(Bbs { settings, mailer, screens, neko, online: Mutex::default(), guard: Mutex::default(), next_call: AtomicU64::new(1) })
     }
 
     /// The SDK's settings for serving it.

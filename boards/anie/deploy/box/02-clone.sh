@@ -8,7 +8,7 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 REPO=/home/bryan/flow-bbs
 OWNER=bryan
 ORIGIN=https://github.com/arcanii/Flow-BBS.git
-BRANCH=anie-bbs
+BRANCH=main
 COMMIT=__COMMIT__
 
 say() { printf 'clone: %s\n' "$*"; }

@@ -171,6 +171,9 @@ recovery codes. The sysop decides each application from the board's sysop
 menu. A member logs in with handle, password and the app's code; staff
 moderate the forums and triage bugs; the sysop also manages members and
 roles, forums, the tracker's products, the bulletin, and reads the log.
+Guests and members alike have its demonstrations: Neko (`flow-cat`, a door
+its image carries, with Neko's notice) and a gallery of a picture, a
+turning model, an effect and a sound.
 Its codes follow United One's rules (arcanii/United_ONE-BackendSystem,
 ADR-0013 and ADR-0024): see `boards/anie/src/crypto.rs`.
 

@@ -10,7 +10,7 @@ be signed from there.
 
 | Where | What |
 | --- | --- |
-| `/home/bryan/flow-bbs` | The clone of arcanii/Flow-BBS, bryan's, at the commit `02-clone.sh` names |
+| `/home/bryan/flow-bbs` | The clone of arcanii/Flow-BBS, bryan's, at the commit on `main` that `02-clone.sh` names |
 | `/root/anie-bbs/bbs.env` | `ANIE_BBS_DB_PASSWORD`, `ANIE_BBS_SECRET_KEY`: made on the box, never printed |
 | `/root/anie-bbs/smtp.env` | Gmail's relay and its app password: written by Bryan, by hand |
 | `/root/anie-bbs/backups/` | Nightly `pg_dump`s, fourteen days |
