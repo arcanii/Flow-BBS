@@ -7,7 +7,7 @@ use std::net::{SocketAddr, TcpListener};
 use std::sync::Arc;
 use std::time::Duration;
 
-use flow_bbs::{Call, Caller, Config, Key};
+use flow_bbs::{Call, Caller, Config, Key, MENU_KEYS};
 use russh::client;
 use russh::keys::PublicKeyOrCertificate;
 use russh::ChannelMsg;
@@ -174,21 +174,21 @@ async fn only_the_guest_login_is_let_in() {
 #[tokio::test]
 async fn a_caller_in_flow_sees_the_pictures_and_models_and_hears_the_sounds() {
     let mut line = dial(serving(screens), &[("TERM_PROGRAM", "flow-terminal")]).await;
-    let said = heard(&mut line, "Your choice: ").await;
+    let said = heard(&mut line, MENU_KEYS).await;
     assert!(said.starts_with("\x1b[2J\x1b[H\x1b[1mHi guest\x1b[0m"), "{said:?}");
     assert!(said.contains("\x1b]7731;fx=sound;sound=chime"), "the sound");
     assert!(said.contains("\x1b_Ga=T"), "the picture sent: {said:?}");
     assert!(said.contains('\u{10EEEE}'), "and its placeholder cells");
     assert!(said.contains("\x1b_ratty;g;r;id=") && said.contains("\x1b_ratty;g;p;id="), "the model registered and placed");
     assert!(!said.contains("[A picture]"));
-    assert!(said.contains("[d]\x1b[0m The door"), "{said:?}");
+    assert!(said.contains("▸ \x1b[1mD\x1b[22m  The door"), "the items in their frame, the bar on the first: {said:?}");
 }
 
 #[tokio::test]
 async fn another_caller_sees_the_words_in_brackets_and_no_escapes_of_flows() {
     let mut line = dial(serving(screens), &[("LANG", "C")]).await;
     heard(&mut line, "\x1b[c").await;
-    let said = heard(&mut line, "Your choice: ").await;
+    let said = heard(&mut line, MENU_KEYS).await;
     assert!(said.contains("[A picture]") && said.contains("[A model]"), "{said:?}");
     assert!(!said.contains("7731") && !said.contains("\x1b_G") && !said.contains("ratty"), "{said:?}");
 }
@@ -196,12 +196,12 @@ async fn another_caller_sees_the_words_in_brackets_and_no_escapes_of_flows() {
 #[tokio::test]
 async fn a_door_runs_on_a_pty_of_the_calls_own_with_flows_variables_and_hands_the_call_back() {
     let mut line = dial(serving(screens), &[("TERM_PROGRAM", "flow-terminal")]).await;
-    heard(&mut line, "Your choice: ").await;
+    heard(&mut line, MENU_KEYS).await;
     line.data(&b"D"[..]).await.unwrap();
     let said = heard(&mut line, "30 100").await;
     assert!(said.contains("door flow-terminal xterm-256color"), "{said:?}");
     line.data(&b"hello\r"[..]).await.unwrap();
-    let said = heard(&mut line, "Your choice: ").await;
+    let said = heard(&mut line, MENU_KEYS).await;
     assert!(said.contains("got hello"), "{said:?}");
     assert!(said.contains("door ended Some(3)"), "its exit code: {said:?}");
     line.data(&b"q"[..]).await.unwrap();

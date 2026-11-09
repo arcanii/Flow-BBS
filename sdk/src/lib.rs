@@ -53,7 +53,7 @@ pub use door::Door;
 pub use input::printable;
 pub use flow_sdk as flow;
 pub use key::Key;
-pub use menu::Item;
+pub use menu::{Item, MENU_KEYS};
 pub use screen::Screen;
 
 /// A board: what each caller gets.
