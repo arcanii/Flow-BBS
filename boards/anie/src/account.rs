@@ -267,7 +267,10 @@ impl Session<'_> {
     fn prove_email(&mut self, id: Option<i64>, email: &str, purpose: &str, send: Send) -> io::Result<bool> {
         let mut sent = self.mail_code(id, email, purpose, &send)?;
         loop {
-            if sent {
+            if sent && purpose == "reset" {
+                // Said the same whether or not they're a member's, so it's said as an if.
+                self.call.say(&format!(" {DIM}If that handle and address are a member's, a code is on its way to {}. It's good for 10 minutes.{PLAIN}\n", printable(email)))?;
+            } else if sent {
                 self.call.say(&format!(" {DIM}A code is on its way to {}. It's good for 10 minutes.{PLAIN}\n", printable(email)))?;
             } else {
                 ui::oops(self.call, "No code could be sent just now (too many in the last hour, or the mail is down). R tries again.")?;
@@ -529,7 +532,8 @@ impl Session<'_> {
     pub fn forgot(&mut self) -> io::Result<()> {
         self.doing("Logging in");
         ui::heading(self.call, "Forgot your password")?;
-        self.call.say(" Your handle and the address you applied with, and a code will come to it.\n\n")?;
+        self.call.say(" Your handle and the address you applied with, and a code will come to it.\n")?;
+        self.call.say(&format!(" {DIM}Not a member yet? Esc, then Apply for membership.{PLAIN}\n\n"))?;
         let Some(handle) = ui::answer(self.call, " Handle: ", 20)? else { return Ok(()) };
         let Some(email) = self.ask_email(" Email address: ")? else { return Ok(()) };
         let found = self

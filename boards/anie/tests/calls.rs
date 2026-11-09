@@ -446,9 +446,11 @@ async fn a_forgotten_password_is_set_anew_by_a_code_to_the_members_address() {
     let mut last = crypto::step_now().saturating_sub(2);
     let mut erin = Caller::dial(&board).await;
     erin.send("f").await;
-    erin.answer(" Handle: ", "erin").await;
+    let said = erin.answer(" Handle: ", "erin").await;
+    assert!(said.contains("Not a member yet?"), "{said:?}");
     erin.answer(" Email address: ", "erin@example.com").await;
-    erin.until(" The code from the mail (R sends another): ").await;
+    let said = erin.until(" The code from the mail (R sends another): ").await;
+    assert!(said.contains("If that handle and address are a member's, a code is on its way"), "said as an if: {said:?}");
     erin.send(&format!("{}\r", board.code_for("erin@example.com"))).await;
     erin.answer(" New password (10 letters or more): ", "erin's new password").await;
     erin.answer(" The same again: ", "erin's new password").await;
