@@ -12,6 +12,7 @@
 
 use std::collections::VecDeque;
 use std::io::{self, Write};
+use std::net::SocketAddr;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
@@ -72,6 +73,7 @@ pub(crate) enum Out {
 /// One caller on the board.
 pub struct Call {
     user: String,
+    address: Option<SocketAddr>,
     term: String,
     pub(crate) caller: Caller,
     pub(crate) size: Size,
@@ -94,12 +96,12 @@ pub(crate) enum Shown {
 }
 
 impl Call {
-    pub(crate) fn new(user: String, term: String, size: Size, env: Vec<(String, String)>, events: Receiver<Event>, out: UnboundedSender<Out>) -> Self {
+    pub(crate) fn new(user: String, address: Option<SocketAddr>, term: String, size: Size, env: Vec<(String, String)>, events: Receiver<Event>, out: UnboundedSender<Out>) -> Self {
         let caller = Caller::Other { term: term.clone(), name: None };
         // Ids from a number of the call's own, clear of the low ones programs
         // pick for themselves, so two calls from one Flow tab don't meet.
         let next_id = flow_sdk::picture::Ids::FIRST + (rand::random::<u32>() % 0x40_0000);
-        Call { user, term, caller, size, env, events, out, pending: VecDeque::new(), hung_up: false, shown: Vec::new(), next_id }
+        Call { user, address, term, caller, size, env, events, out, pending: VecDeque::new(), hung_up: false, shown: Vec::new(), next_id }
     }
 
     /// The caller's `TERM`, as their pty request said.
@@ -127,6 +129,11 @@ impl Call {
     /// sounds reach them.
     pub fn is_flow(&self) -> bool {
         matches!(self.caller, Caller::Flow { .. })
+    }
+
+    /// Where they're calling from, as their connection came.
+    pub fn address(&self) -> Option<SocketAddr> {
+        self.address
     }
 
     /// Their window's size, as it was last said.
@@ -302,7 +309,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let (out, sent) = tokio::sync::mpsc::unbounded_channel();
         let env = env.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect();
-        (Call::new("guest".into(), "xterm-256color".into(), Size { cols: 80, rows: 24, width: 800, height: 480 }, env, rx, out), tx, sent)
+        (Call::new("guest".into(), None, "xterm-256color".into(), Size { cols: 80, rows: 24, width: 800, height: 480 }, env, rx, out), tx, sent)
     }
 
     #[test]

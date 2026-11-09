@@ -13,6 +13,10 @@ Two crates:
   write to them. `serve` puts it behind an SSH server of its own.
 - **`flow-bbsd`**, the stock server (`server/`): a board run from a
   folder, for sysops who'd rather write files than Rust.
+- **`anie-bbs`** (`boards/anie/`), the Anie Solutions BBS: a board in
+  code with members the sysop lets in, an authenticator app at login,
+  forums and a bug tracker, in PostgreSQL. It runs on tkaniedev03 in
+  Docker (`boards/anie/deploy/`).
 
 Boards are listed for `dial` in the phonebook,
 [arcanii/Flow-BBS-List](https://github.com/arcanii/Flow-BBS-List).
@@ -40,7 +44,10 @@ fn main() -> std::io::Result<()> {
 
 A board in code has what `flow-bbsd` is made of: `Screen::read` and
 `call.show` for screens, `call.menu` for a menu of `Item`s, `call.door`
-for a `Door`, and `call.pause`. What Flow draws comes from Flow's SDK
+for a `Door`, and `call.pause`; and for a board of its own drawing,
+`call.clear`, `call.ask` and `call.ask_secret` for a line typed (only
+printable letters kept), `printable` for showing what someone else
+typed, and `call.address` for where the caller is. What Flow draws comes from Flow's SDK
 ([arcanii/Flow-SDK](https://github.com/arcanii/Flow-SDK)), re-exported as
 `flow_bbs::flow`: its pictures, models, effects and sounds are escape
 sequences, which `call.send` writes down the call.
@@ -143,6 +150,9 @@ It runs in a Flow tab of its own too: `cargo run -p flow-cat`.
   must change its entry first.
 - Run it as a user of its own, on a port of its own (2222 unless set), so
   the machine's own `sshd` keeps port 22.
+- At most 64 connections at once and 4 from one address (`Config`'s
+  `max_calls` and `max_calls_per_address`); past them, a connection is
+  turned away before it logs in.
 
 To list a board, add it to the phonebook
 ([arcanii/Flow-BBS-List](https://github.com/arcanii/Flow-BBS-List),
@@ -150,6 +160,27 @@ To list a board, add it to the phonebook
 
 ```
 ssh-keygen -lf host_key
+```
+
+## The Anie Solutions BBS
+
+`boards/anie` is a board in code. A caller applies from the welcome: a
+handle, their name, an email address (a code is mailed to prove it), a
+password, and an authenticator app set up from a QR code, with eight
+recovery codes. The sysop decides each application from the board's sysop
+menu. A member logs in with handle, password and the app's code; staff
+moderate the forums and triage bugs; the sysop also manages members and
+roles, forums, the tracker's products, the bulletin, and reads the log.
+Its codes follow United One's rules (arcanii/United_ONE-BackendSystem,
+ADR-0013 and ADR-0024): see `boards/anie/src/crypto.rs`.
+
+It's set up from its environment (`boards/anie/src/settings.rs`) and runs
+with `docker compose` (`boards/anie/deploy/`, with the runbook for
+tkaniedev03). Its tests call it over SSH against a PostgreSQL of their
+own, when `ANIE_BBS_TEST_DATABASE_URL` names one:
+
+```
+ANIE_BBS_TEST_DATABASE_URL=postgres://postgres@127.0.0.1:55432/postgres cargo test -p anie-bbs
 ```
 
 ## Building

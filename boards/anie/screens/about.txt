@@ -1,0 +1,23 @@
+{bold}{bright-cyan}About {board}{/}
+
+ A bulletin board, as they used to be, for Anie Solutions: forums to talk
+ in, and a bug tracker to tell us what's broken in what we make.
+
+ {bold}Membership{/}
+ Apply from the welcome: a handle, your name, your email address (a code
+ comes to it), a password, and an authenticator app on your phone
+ (Google Authenticator, Microsoft Authenticator, 1Password, Authy...).
+ The sysop reads each application and lets members in.
+
+ {bold}Logging in{/}
+ Your handle, your password, and the 6-digit code your app shows. Keep
+ the recovery codes you're given: each gets you in once if the phone is
+ lost. Forgotten your password? A code to your email sets a new one.
+
+ {bold}Roles{/}
+ {bright-white}member{/}   reads and posts in the forums, files and comments on bugs
+ {bright-white}staff{/}    keeps the forums tidy and triages bugs
+ {bright-white}sysop{/}    runs the board
+
+ {dim}Times on the board are Tokyo time. Best in Flow (dial it from Flow's
+ phonebook); any terminal's ssh works too.{/}

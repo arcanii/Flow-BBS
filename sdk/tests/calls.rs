@@ -207,3 +207,35 @@ async fn a_door_runs_on_a_pty_of_the_calls_own_with_flows_variables_and_hands_th
     line.data(&b"q"[..]).await.unwrap();
     assert_eq!(ended(&mut line).await, Some(0));
 }
+
+/// A board that asks a name and a password, and says what it was given.
+fn asks(call: &mut Call) -> std::io::Result<()> {
+    let name = call.ask("Name: ", 8)?;
+    let word = call.ask_secret("Password: ", 20)?;
+    call.say(&format!("got {name:?} {word:?}\n"))?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_typed_line_is_echoed_a_password_starred_and_nothing_but_letters_kept() {
+    let mut line = dial(serving(asks), &[("TERM_PROGRAM", "flow-terminal")]).await;
+    heard(&mut line, "Name: ").await;
+    line.data(&b"bry\x1b[31mx\x7fan\r"[..]).await.unwrap();
+    let said = heard(&mut line, "Password: ").await;
+    assert!(said.starts_with("bryx\x08 \x08an\r\n"), "the escape left out, the rest echoed and backed over: {said:?}");
+    line.data(&b"s3cret\r"[..]).await.unwrap();
+    let said = heard(&mut line, "s3cret\")").await;
+    assert!(said.starts_with("******\r\n"), "a star a letter: {said:?}");
+    assert!(said.contains(r#"got Some("bryan") Some("s3cret")"#), "{said:?}");
+}
+
+#[tokio::test]
+async fn a_line_given_up_with_esc_is_none_and_too_long_a_line_stops_at_its_limit() {
+    let mut line = dial(serving(asks), &[("TERM_PROGRAM", "flow-terminal")]).await;
+    heard(&mut line, "Name: ").await;
+    line.data(&b"abcdefghijk\r"[..]).await.unwrap();
+    heard(&mut line, "Password: ").await;
+    line.data(&b"x\x1b"[..]).await.unwrap();
+    let said = heard(&mut line, "None").await;
+    assert!(said.contains(r#"Some("abcdefgh") None"#), "{said:?}");
+}

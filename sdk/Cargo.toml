@@ -13,3 +13,4 @@ russh = { workspace = true }
 tokio = { workspace = true }
 rand = "0.10"
 portable-pty = "0.9"
+unicode-width = "0.2"

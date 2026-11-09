@@ -15,6 +15,7 @@ work's step 2, which this repository is.
 
 ```bash
 cargo test --workspace                  # unit tests, then calls over real SSH (sdk/tests/calls.rs)
+ANIE_BBS_TEST_DATABASE_URL=postgres://postgres@127.0.0.1:55432/postgres cargo test -p anie-bbs   # the Anie board's calls, on a PostgreSQL
 cargo clippy --workspace --all-targets  # no warnings
 cargo run -p flow-bbsd -- boards/example   # the example board on 0.0.0.0:2222
 ssh -p 2222 guest@localhost             # call it
@@ -30,7 +31,9 @@ ssh -p 2222 guest@localhost             # call it
   (`detect`, `term`, `input`) is for a program at a terminal of its own,
   so `Call` does that part for a call.
 - russh with `ring`, not aws-lc-rs, so it builds without a C toolchain's
-  extras.
+  extras; lettre (the Anie board's mail) the same, `rustls-tls`.
+- The toolchain here defaults to 1.92; the workspace needs 1.95, so
+  `cargo +stable`.
 
 ## How it's laid out
 
@@ -68,6 +71,19 @@ ssh -p 2222 guest@localhost             # call it
   terminal: Flow's SDK's `Query` for pictures and a cell's size, the frames
   sent once (as strips with bare cells where `Caps::bare`, on Windows), the
   mouse through crossterm, effects and sounds through `send_effects`.
+- `sdk/src/input.rs`: `Call::ask` and `Call::ask_secret` (a typed line,
+  printable letters only), and `printable` for what another caller wrote.
+  `server.rs` also turns away connections past `max_calls` (and per
+  address) before they log in, and gives each `Call` its `address`.
+- `boards/anie`: `anie-bbs`, the Anie Solutions BBS, a board in code on
+  PostgreSQL (the sync `postgres` crate, a connection a call):
+  `account.rs` (applying, emailed codes, the authenticator, logins,
+  recovery, profile), `forums.rs`, `tracker.rs`, `sysop.rs`, `crypto.rs`
+  (United One's rules for codes), `mail.rs` (Gmail by SMTP), `db.rs`
+  (migrations in `migrations/`, errors logged by SQLSTATE only). What a
+  caller is told never says which part of a login was wrong, or whether
+  an address is a member's. `deploy/`: its Dockerfile, compose file, and
+  the signed scripts that run it on tkaniedev03 (`deploy/README.md`).
 - `boards/example`: the example board, its banner drawn in code once
   (`pictures/banner.png`) and a crystal (`pictures/crystal.obj`); its doors
   are `flow-cat` and `flow-mines`, which must be on the server's PATH.

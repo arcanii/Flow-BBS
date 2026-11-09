@@ -1,0 +1,65 @@
+# The Anie Solutions BBS on one machine: PostgreSQL, and the board.
+#
+#   docker compose --env-file /root/anie-bbs/bbs.env -f boards/anie/deploy/compose.yaml up -d
+#
+# bbs.env holds what's made on the machine and never leaves it
+# (ANIE_BBS_DB_PASSWORD, ANIE_BBS_SECRET_KEY); smtp.env the mail relay's
+# login (SMTP_*, mail.rs), written by hand. Both are root's, mode 600.
+#
+# The database answers on the machine's loopback alone. The board uses the
+# machine's own network, so the host firewall (ufw) decides who reaches its
+# port, and it sees callers' real addresses for its limits; it listens on
+# IPv4 only.
+
+name: anie-bbs
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: anie_bbs
+      POSTGRES_USER: anie_bbs
+      POSTGRES_PASSWORD: ${ANIE_BBS_DB_PASSWORD:?ANIE_BBS_DB_PASSWORD is set in bbs.env}
+    volumes:
+      - db:/var/lib/postgresql
+    ports:
+      - "127.0.0.1:${ANIE_BBS_DB_PORT:-5440}:5432"
+    shm_size: 128mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anie_bbs -d anie_bbs"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  bbs:
+    build:
+      context: ../../..
+      dockerfile: boards/anie/deploy/Dockerfile
+    image: anie-bbs:latest
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ${ANIE_BBS_SMTP_ENV:-/root/anie-bbs/smtp.env}
+    environment:
+      ANIE_BBS_DATABASE_URL: postgres://anie_bbs:${ANIE_BBS_DB_PASSWORD}@127.0.0.1:${ANIE_BBS_DB_PORT:-5440}/anie_bbs
+      ANIE_BBS_SECRET_KEY: ${ANIE_BBS_SECRET_KEY:?ANIE_BBS_SECRET_KEY is set in bbs.env}
+      ANIE_BBS_ADDRESS: ${ANIE_BBS_ADDRESS:-0.0.0.0:2222}
+      ANIE_BBS_SYSOP_MAIL: ${ANIE_BBS_SYSOP_MAIL:-}
+      ANIE_BBS_MAIL: ${ANIE_BBS_MAIL:-}
+    volumes:
+      - home:/var/lib/anie-bbs
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  db:
+  home:

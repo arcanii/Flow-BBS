@@ -1,0 +1,4 @@
+# What a board's image is built from: the workspace's sources, nothing built.
+target
+.git
+**/*.log

@@ -1,0 +1,15 @@
+{bold}{bright-cyan}The rules of {board}{/}
+
+ 1. Be kind. Disagree with ideas, not people.
+ 2. No spam, no advertising, nothing illegal.
+ 3. Keep customers' and colleagues' private details private: no
+    passwords, keys, personal data or anyone's confidential work.
+ 4. File bugs with what you did, what you expected and what happened.
+    One bug a report.
+ 5. One account a person. Handles are for the board; your real name
+    and email are seen by the sysop alone.
+ 6. The sysop and staff may remove posts and suspend members who
+    break these rules.
+
+ {dim}What you post is kept on Anie Solutions' server. Ask the sysop to
+ close your account and have your details removed.{/}

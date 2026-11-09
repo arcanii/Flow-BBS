@@ -1,0 +1,9 @@
+{bold}{bright-cyan}   ___          _          ____        _       _   _
+{bold}{bright-cyan}  / _ \  _ __  (_)  ___   / ___|  ___ | | _   _| |_(_) ___  _ __  ___
+{bold}{bright-cyan} | |_| || '_ \ | | / _ \  \___ \ / _ \| || | | | __| |/ _ \| '_ \/ __|
+{bold}{bright-cyan} |  _  || | | || ||  __/   ___) | (_) | || |_| | |_| | (_) | | | \__ \
+{bold}{bright-cyan} |_| |_||_| |_||_| \___|  |____/ \___/|_| \__,_|\__|_|\___/|_| |_|___/{/}{sound chime}{fx ripple}
+
+ {bold}Welcome to {board}.{/}
+ {dim}Forums and a bug tracker for Anie Solutions' people, customers and friends.{/}
+ {dim}Members are let in by the sysop: apply, and you'll hear by email.{/}
