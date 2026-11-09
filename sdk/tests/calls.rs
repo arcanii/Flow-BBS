@@ -43,17 +43,22 @@ fn serving(board: impl flow_bbs::Board) -> SocketAddr {
     address
 }
 
-/// A folder with a 64 × 32 PNG and a model, for screens to show.
+/// A folder with a 64 × 32 PNG and a model, for screens to show: written
+/// once, since the tests' calls run at once and read it.
 fn pictures() -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("flow-bbs-pictures-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
-    png.extend(64u32.to_be_bytes());
-    png.extend(32u32.to_be_bytes());
-    png.extend([8, 2, 0, 0, 0]);
-    std::fs::write(dir.join("p.png"), png).unwrap();
-    std::fs::write(dir.join("m.obj"), "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n").unwrap();
-    dir
+    static MADE: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    MADE.get_or_init(|| {
+        let dir = std::env::temp_dir().join(format!("flow-bbs-pictures-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+        png.extend(64u32.to_be_bytes());
+        png.extend(32u32.to_be_bytes());
+        png.extend([8, 2, 0, 0, 0]);
+        std::fs::write(dir.join("p.png"), png).unwrap();
+        std::fs::write(dir.join("m.obj"), "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n").unwrap();
+        dir
+    })
+    .clone()
 }
 
 /// A board that shows a screen with a picture and a model, then a menu

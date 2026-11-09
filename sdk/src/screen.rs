@@ -331,8 +331,10 @@ mod tests {
         b
     }
 
-    fn folder() -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("flow-bbs-screen-{}", std::process::id()));
+    /// A folder of the test's own, so tests running at once never write
+    /// a picture another is reading.
+    fn folder(test: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("flow-bbs-screen-{}-{test}", std::process::id()));
         fs::create_dir_all(dir.join("pictures")).unwrap();
         fs::write(dir.join("pictures/banner.png"), png(640, 160)).unwrap();
         fs::write(dir.join("pictures/cube.obj"), "v 0 0 0\n").unwrap();
@@ -361,7 +363,7 @@ mod tests {
 
     #[test]
     fn a_line_that_is_a_picture_or_a_model_reads_its_file() {
-        let dir = folder();
+        let dir = folder("media");
         let s = Screen::parse("![The board](pictures/banner.png)\n  ![A cube](pictures/cube.obj)  ", &dir).unwrap();
         assert!(matches!(&s.lines[0], Line::Picture { words, size: (640, 160), .. } if words == "The board"));
         assert!(matches!(&s.lines[1], Line::Model { format: Format::Obj, .. }));
@@ -369,7 +371,7 @@ mod tests {
 
     #[test]
     fn a_mistake_is_said_with_its_line() {
-        let dir = folder();
+        let dir = folder("mistakes");
         for (text, says) in [
             ("ok\n{sound kazoo}", "line 2: {sound kazoo}: Flow has no sound of that name"),
             ("{fx quake}", "line 1: {fx quake}: an effect is ripple, burst, stir or bolt"),
