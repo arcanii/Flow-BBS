@@ -31,12 +31,47 @@ fn board(call: &mut Call) -> std::io::Result<()> {
 
 /// Serves `board` on a port the system picks, with a host key of its own.
 fn served() -> SocketAddr {
+    serving(board)
+}
+
+fn serving(board: impl flow_bbs::Board) -> SocketAddr {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
     let host_key = std::env::temp_dir().join(format!("flow-bbs-test-{}-{}", std::process::id(), address.port())).join("host_key");
     let config = Config { host_key, ask: Duration::from_millis(500), ..Config::default() };
     std::thread::spawn(move || flow_bbs::serve_on(listener, config, board));
     address
+}
+
+/// A folder with a 64 × 32 PNG and a model, for screens to show.
+fn pictures() -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("flow-bbs-pictures-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+    png.extend(64u32.to_be_bytes());
+    png.extend(32u32.to_be_bytes());
+    png.extend([8, 2, 0, 0, 0]);
+    std::fs::write(dir.join("p.png"), png).unwrap();
+    std::fs::write(dir.join("m.obj"), "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n").unwrap();
+    dir
+}
+
+/// A board that shows a screen with a picture and a model, then a menu
+/// whose door is a shell saying what it was given.
+fn screens(call: &mut Call) -> std::io::Result<()> {
+    let screen = flow_bbs::Screen::parse("{bold}Hi {user}{/}{sound chime}\n![A picture](p.png)\n![A model](m.obj)", &pictures()).unwrap();
+    call.show(&screen, &[])?;
+    let items = [flow_bbs::Item::new('d', "The door"), flow_bbs::Item::new('q', "Hang up")];
+    loop {
+        match call.menu(None, &[], &items)? {
+            Some(0) => {
+                let door = flow_bbs::Door::new("/bin/sh", ["-c", "printf 'door %s %s\\n' \"${TERM_PROGRAM:-none}\" \"$TERM\"; stty size; read line; echo \"got $line\"; exit 3"]);
+                let code = call.door(&door)?;
+                call.say(&format!("door ended {code:?}\n"))?;
+            }
+            _ => return Ok(()),
+        }
+    }
 }
 
 struct Dialer;
@@ -129,4 +164,41 @@ async fn only_the_guest_login_is_let_in() {
     let mut session = client::connect(config, served(), Dialer).await.unwrap();
     assert!(!session.authenticate_none("root").await.unwrap().success());
     assert!(!session.authenticate_password("root", "hunter2").await.unwrap().success());
+}
+
+#[tokio::test]
+async fn a_caller_in_flow_sees_the_pictures_and_models_and_hears_the_sounds() {
+    let mut line = dial(serving(screens), &[("TERM_PROGRAM", "flow-terminal")]).await;
+    let said = heard(&mut line, "Your choice: ").await;
+    assert!(said.starts_with("\x1b[2J\x1b[H\x1b[1mHi guest\x1b[0m"), "{said:?}");
+    assert!(said.contains("\x1b]7731;fx=sound;sound=chime"), "the sound");
+    assert!(said.contains("\x1b_Ga=T"), "the picture sent: {said:?}");
+    assert!(said.contains('\u{10EEEE}'), "and its placeholder cells");
+    assert!(said.contains("\x1b_ratty;g;r;id=") && said.contains("\x1b_ratty;g;p;id="), "the model registered and placed");
+    assert!(!said.contains("[A picture]"));
+    assert!(said.contains("[d]\x1b[0m The door"), "{said:?}");
+}
+
+#[tokio::test]
+async fn another_caller_sees_the_words_in_brackets_and_no_escapes_of_flows() {
+    let mut line = dial(serving(screens), &[("LANG", "C")]).await;
+    heard(&mut line, "\x1b[c").await;
+    let said = heard(&mut line, "Your choice: ").await;
+    assert!(said.contains("[A picture]") && said.contains("[A model]"), "{said:?}");
+    assert!(!said.contains("7731") && !said.contains("\x1b_G") && !said.contains("ratty"), "{said:?}");
+}
+
+#[tokio::test]
+async fn a_door_runs_on_a_pty_of_the_calls_own_with_flows_variables_and_hands_the_call_back() {
+    let mut line = dial(serving(screens), &[("TERM_PROGRAM", "flow-terminal")]).await;
+    heard(&mut line, "Your choice: ").await;
+    line.data(&b"D"[..]).await.unwrap();
+    let said = heard(&mut line, "30 100").await;
+    assert!(said.contains("door flow-terminal xterm-256color"), "{said:?}");
+    line.data(&b"hello\r"[..]).await.unwrap();
+    let said = heard(&mut line, "Your choice: ").await;
+    assert!(said.contains("got hello"), "{said:?}");
+    assert!(said.contains("door ended Some(3)"), "its exit code: {said:?}");
+    line.data(&b"q"[..]).await.unwrap();
+    assert_eq!(ended(&mut line).await, Some(0));
 }

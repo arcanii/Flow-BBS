@@ -1,0 +1,5 @@
+{bold}The gallery{/}{fx ripple}
+
+![A turning crystal](pictures/crystal.obj)
+
+{dim}In Flow the crystal turns; elsewhere you see its name.{/}

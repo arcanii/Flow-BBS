@@ -45,8 +45,23 @@ ssh -p 2222 guest@localhost             # call it
   `say` turns each newline into CR LF: the call has no pty of its own.
 - `sdk/src/key.rs`: keys from the caller's bytes, a cut-off ESC waiting
   50 ms for the rest of a sequence.
-- `server/src/main.rs`: `flow-bbsd`, reading `board.toml` and
-  `screens/welcome.txt`.
+- `sdk/src/screen.rs`: `Screen`, its marks (`{user}`, the sixteen colors,
+  `{sound …}`, `{fx …}`) and its picture and model lines, and
+  `Call::show`, which clears the screen, forgets the last screen's
+  pictures and models (each call's ids its own), and places pictures by
+  placeholder cells and models over the rows it makes room for. A caller
+  not in Flow gets the words in brackets.
+- `sdk/src/menu.rs`: `Item`, `Call::menu` (Ctrl+C and Ctrl+D hang up; a
+  resize draws it again) and `Call::pause`.
+- `sdk/src/door.rs`: `Door` and `Call::door`, on portable-pty: the
+  caller's keys to the pty, its output to the caller from a thread of its
+  own, resizes passed on, Flow's variables set or taken out.
+- `server/src/main.rs`: `flow-bbsd`, reading `board.toml` (menus, items,
+  doors; every name checked at the start) and running a call through its
+  menus.
+- `boards/example`: the example board, its banner drawn in code once
+  (`pictures/banner.png`) and a crystal (`pictures/crystal.obj`); its door
+  is `flow-mines`, which must be on the server's PATH.
 
 ## Never without the user's word
 

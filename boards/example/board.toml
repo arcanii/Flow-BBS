@@ -1,6 +1,22 @@
-# A board for flow-bbsd: `flow-bbsd boards/example`. Every line but the
-# name may be left out; paths are from this folder.
+# A board for flow-bbsd: `flow-bbsd boards/example`, then call it with
+# `ssh -p 2222 guest@localhost`, or Flow's dial. Paths are from this folder.
 name = "Example Board"
 address = "0.0.0.0:2222"
 guest = "guest"
 host_key = "host_key"
+
+# A caller starts at the menu named by `first`, "main" unless set. Each
+# item shows a screen, goes to another menu, opens a door, or hangs up.
+[menus.main]
+screen = "welcome"
+items = [
+  { key = "a", label = "About this board", screen = "about" },
+  { key = "g", label = "The gallery", screen = "gallery" },
+  { key = "m", label = "Play Flow Mines", door = "mines" },
+  { key = "q", label = "Hang up", hang_up = true },
+]
+
+# Flow's minesweeper, on the server's PATH (flowapp's flow-mines, or built
+# from arcanii/Flow-Games). Any program can be a door.
+[doors.mines]
+command = ["flow-mines"]

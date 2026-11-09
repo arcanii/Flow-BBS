@@ -1,0 +1,9 @@
+{bold}About {board}{/}
+
+This board is a folder. board.toml says its menus and its doors, and
+each screen is a text file in screens/, with marks for {{colors}},
+{{sounds}} and {{effects}}, and a line of its own for each picture or
+turning model.
+
+Callers in Flow see the pictures and models and hear the sounds;
+callers in other terminals see the words in their own colors.

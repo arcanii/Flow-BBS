@@ -1,4 +1,3 @@
-Welcome to the Example Board, {user}.
-
-This is the board flow-bbsd runs from boards/example: change
-screens/welcome.txt and call again to see it.
+![Flow BBS](pictures/banner.png)
+{bold}{bright-cyan}Welcome to {board}, {user}.{/}{sound chime}
+{dim}A board flow-bbsd runs from the folder boards/example.{/}

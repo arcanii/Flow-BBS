@@ -72,19 +72,45 @@ pub(crate) enum Out {
 /// One caller on the board.
 pub struct Call {
     user: String,
-    caller: Caller,
-    size: Size,
+    term: String,
+    pub(crate) caller: Caller,
+    pub(crate) size: Size,
     env: Vec<(String, String)>,
-    events: Receiver<Event>,
-    out: UnboundedSender<Out>,
-    pending: VecDeque<u8>,
-    hung_up: bool,
+    pub(crate) events: Receiver<Event>,
+    pub(crate) out: UnboundedSender<Out>,
+    pub(crate) pending: VecDeque<u8>,
+    pub(crate) hung_up: bool,
+    /// The pictures and models on the caller's screen, by id, to forget
+    /// when the next screen comes; and the next id to give.
+    pub(crate) shown: Vec<Shown>,
+    next_id: u32,
+}
+
+/// A picture or a model a call put on the caller's screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Shown {
+    Picture(u32),
+    Model(u32),
 }
 
 impl Call {
     pub(crate) fn new(user: String, term: String, size: Size, env: Vec<(String, String)>, events: Receiver<Event>, out: UnboundedSender<Out>) -> Self {
-        let caller = Caller::Other { term, name: None };
-        Call { user, caller, size, env, events, out, pending: VecDeque::new(), hung_up: false }
+        let caller = Caller::Other { term: term.clone(), name: None };
+        // Ids from a number of the call's own, clear of the low ones programs
+        // pick for themselves, so two calls from one Flow tab don't meet.
+        let next_id = flow_sdk::picture::Ids::FIRST + (rand::random::<u32>() % 0x40_0000);
+        Call { user, term, caller, size, env, events, out, pending: VecDeque::new(), hung_up: false, shown: Vec::new(), next_id }
+    }
+
+    /// The caller's `TERM`, as their pty request said.
+    pub fn term(&self) -> &str {
+        &self.term
+    }
+
+    /// An id for a picture or a model, none given twice in a call.
+    pub(crate) fn next_id(&mut self) -> u32 {
+        self.next_id += 1;
+        self.next_id
     }
 
     /// The name they logged in with (the board's guest login, for now).
