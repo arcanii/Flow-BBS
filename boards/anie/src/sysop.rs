@@ -36,7 +36,7 @@ impl Session<'_> {
             let waiting: i64 = self.db.query_one("SELECT count(*) FROM members WHERE status = 'pending'", &[]).db()?.get(0);
             let top = format!("{{bold}}{{bright-cyan}}Sysop{{/}}\n{{dim}}{waiting} application(s) waiting{{/}}");
             let screen = flow_bbs::Screen::parse(&top, &self.bbs.settings.screens).map_err(io::Error::other)?;
-            let Some(chosen) = self.call.menu(Some(&screen), &[], &items)? else { return Ok(()) };
+            let Some(chosen) = self.call.menu_titled(Some(&screen), &[], "Sysop menu", &items)? else { return Ok(()) };
             match items[chosen].key {
                 'a' => self.applications()?,
                 'm' => self.members()?,

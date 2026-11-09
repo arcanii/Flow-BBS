@@ -1,6 +1,6 @@
 # The Anie Solutions BBS: built from the workspace (the context is the
 # repository's root), run as a user of its own from a read-only image, with
-# flow-cat (Neko, the demonstrations' door) on its PATH and Neko's notice
+# flow-cat (Neko, a door of the game room's) on its PATH and Neko's notice
 # beside it, as its sprites' terms ask. compose.yaml builds it; nothing
 # secret goes into it.
 

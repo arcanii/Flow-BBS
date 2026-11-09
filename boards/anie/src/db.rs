@@ -10,7 +10,7 @@ use std::io;
 use postgres::{Client, NoTls};
 
 /// The schema, a migration a step, in order.
-const MIGRATIONS: &[(i32, &str)] = &[(1, include_str!("../migrations/0001_init.sql"))];
+const MIGRATIONS: &[(i32, &str)] = &[(1, include_str!("../migrations/0001_init.sql")), (2, include_str!("../migrations/0002_games.sql"))];
 
 /// A key `pg_advisory_lock` takes while migrating, so two boards starting at
 /// once don't both migrate.

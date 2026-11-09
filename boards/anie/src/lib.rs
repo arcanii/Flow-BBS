@@ -8,9 +8,10 @@
 //! recovery code, once each). Roles go member < staff < sysop: staff
 //! moderate the forums and triage bugs; the sysop runs the board from its
 //! sysop menu (applications, members and their roles, forums, products,
-//! the bulletin, the log). Guests and members alike have the
-//! demonstrations: Neko (the door `flow-cat`) and a gallery of what Flow
-//! draws.
+//! the bulletin, the log). Guests and members alike have the game room
+//! (experimental): Mines (the door `flow-mines`), its members' best times
+//! a leaderboard they share, and Neko (the door `flow-cat`); and the
+//! demonstrations, a gallery of what Flow draws.
 
 pub mod crypto;
 pub mod db;
@@ -21,6 +22,7 @@ pub mod ui;
 mod account;
 mod demo;
 mod forums;
+mod games;
 mod session;
 mod sysop;
 mod tracker;
@@ -42,7 +44,7 @@ pub struct Bbs {
     pub settings: Settings,
     pub mailer: Box<dyn Mailer>,
     pub screens: Screens,
-    /// Neko's door, for the demonstrations.
+    /// Neko's door, for the game room.
     pub neko: Door,
     /// Who's on now, by call.
     pub online: Mutex<BTreeMap<u64, Online>>,
@@ -54,16 +56,18 @@ pub struct Bbs {
 /// The screens from the board's folder.
 pub struct Screens {
     pub welcome: Screen,
+    /// Over a member's menu.
+    pub main: Screen,
     pub about: Screen,
     pub rules: Screen,
-    pub demos: Screen,
+    pub games: Screen,
     pub gallery: Screen,
 }
 
 impl Screens {
     pub fn read(folder: &std::path::Path) -> io::Result<Screens> {
         let one = |name: &str| Screen::read(&folder.join(format!("{name}.txt")), folder);
-        Ok(Screens { welcome: one("welcome")?, about: one("about")?, rules: one("rules")?, demos: one("demos")?, gallery: one("gallery")? })
+        Ok(Screens { welcome: one("welcome")?, main: one("main")?, about: one("about")?, rules: one("rules")?, games: one("games")?, gallery: one("gallery")? })
     }
 }
 

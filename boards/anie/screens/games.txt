@@ -1,0 +1,8 @@
+{bold}{bright-cyan}The game room{/} {dim}(experimental){/}{fx ripple}
+
+ {bold}Mines{/}: open the field without setting off a mine. Each member's best
+ time on each size goes on the board's leaderboard, so you can race each
+ other: beat a time, and the board says where you stand.
+ {bold}Neko{/}: the desktop cat of 1989 runs to your pointer, and naps.
+
+ {dim}Games here are new and may change. q (or Esc, for Neko) brings you back.{/}

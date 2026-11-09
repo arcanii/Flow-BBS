@@ -49,13 +49,18 @@ ssh -p 2222 guest@localhost             # call it
 - `sdk/src/key.rs`: keys from the caller's bytes, a cut-off ESC waiting
   50 ms for the rest of a sequence.
 - `sdk/src/screen.rs`: `Screen`, its marks (`{user}`, the sixteen colors,
-  `{sound …}`, `{fx …}`) and its picture and model lines, and
+  `{sound …}`, `{fx …}`), its picture and model lines (`{rows N}` after
+  one), lines for Flow alone or for others (`{in flow}`, `{not in flow}`),
+  and
   `Call::show`, which clears the screen, forgets the last screen's
   pictures and models (each call's ids its own), and places pictures by
   placeholder cells and models over the rows it makes room for. A caller
   not in Flow gets the words in brackets.
-- `sdk/src/menu.rs`: `Item`, `Call::menu` (Ctrl+C and Ctrl+D hang up; a
-  resize draws it again) and `Call::pause`.
+- `sdk/src/menu.rs`: `Item`, `Call::menu` and `menu_titled` (the items in
+  a frame, a bar the arrows move and Enter takes, or a key at once;
+  Ctrl+C and Ctrl+D hang up; a resize draws it again; `MENU_KEYS` says
+  the keys under it) and `Call::pause`. `Call::show_leaving` leaves the
+  frame room under a screen's pictures.
 - `sdk/src/door.rs`: `Door` and `Call::door`, on portable-pty: the
   caller's keys to the pty, its output to the caller from a thread of its
   own, resizes passed on, Flow's variables set or taken out.
@@ -78,9 +83,12 @@ ssh -p 2222 guest@localhost             # call it
 - `boards/anie`: `anie-bbs`, the Anie Solutions BBS, a board in code on
   PostgreSQL (the sync `postgres` crate, a connection a call):
   `account.rs` (applying, emailed codes, the authenticator, logins,
-  recovery, profile), `forums.rs`, `tracker.rs`, `sysop.rs`, `demo.rs`
-  (the demonstrations: Neko's door, `ANIE_BBS_NEKO`, and the gallery;
-  its pictures in `screens/pictures`), `crypto.rs`
+  recovery, profile), `forums.rs`, `tracker.rs`, `sysop.rs`, `games.rs`
+  (the game room: Neko's door, `ANIE_BBS_NEKO`, and Mines',
+  `ANIE_BBS_MINES`, each game given a data folder of its own whose
+  `flow-mines/best.json` is taken in after for the leaderboard,
+  `mines_best`), `demo.rs` (the gallery; the pictures, Ánië's logo
+  among them, in `screens/pictures`), `crypto.rs`
   (United One's rules for codes), `mail.rs` (Gmail by SMTP), `db.rs`
   (migrations in `migrations/`, errors logged by SQLSTATE only). What a
   caller is told never says which part of a login was wrong, or whether

@@ -21,6 +21,8 @@ getrandom = "0.3"
 data-encoding = "2"
 qrcodegen = "1.8"
 unicode-width = "0.2"
+# Mines' best times, as it keeps them.
+serde_json = "1"
 # Mail over rustls with ring, as russh is, so it builds without aws-lc's toolchain.
 lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "hostname", "rustls-tls"] }
 

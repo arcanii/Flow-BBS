@@ -8,7 +8,8 @@
 //! | `ANIE_BBS_ADDRESS` | Where it listens (`0.0.0.0:2222`) |
 //! | `ANIE_BBS_HOST_KEY` | Its SSH host key, made there the first time (`host_key`) |
 //! | `ANIE_BBS_SCREENS` | The folder of its screens and their pictures (`screens`) |
-//! | `ANIE_BBS_NEKO` | Neko's door, the demonstrations' cat (`flow-cat`, on the PATH) |
+//! | `ANIE_BBS_NEKO` | Neko's door, the game room's cat (`flow-cat`, on the PATH) |
+//! | `ANIE_BBS_MINES` | Mines' door, the game room's (`flow-mines`, on the PATH) |
 //! | `ANIE_BBS_NAME` | Its name (`Anie Solutions BBS`) |
 //! | `ANIE_BBS_TIME_ZONE` | The zone its times are shown in (`Asia/Tokyo`) |
 //! | `ANIE_BBS_SYSOP_MAIL` | Where news of an application goes; else to the sysops' own addresses |
@@ -31,6 +32,7 @@ pub struct Settings {
     pub keys: Keys,
     pub screens: PathBuf,
     pub neko: String,
+    pub mines: String,
     pub zone: String,
     pub sysop_mail: Option<String>,
     pub max_calls: usize,
@@ -63,6 +65,7 @@ impl Settings {
             keys: Keys::from_hex(&need("ANIE_BBS_SECRET_KEY")?)?,
             screens: present("ANIE_BBS_SCREENS").unwrap_or("screens".into()).into(),
             neko: present("ANIE_BBS_NEKO").unwrap_or("flow-cat".into()),
+            mines: present("ANIE_BBS_MINES").unwrap_or("flow-mines".into()),
             zone,
             sysop_mail: present("ANIE_BBS_SYSOP_MAIL"),
             max_calls: number("ANIE_BBS_MAX_CALLS", 64)?,

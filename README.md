@@ -112,6 +112,26 @@ turning model where the file is a `.obj` or `.glb`. A caller in Flow sees
 the pictures and models, hears the sounds and sees the effects; any other
 caller sees the words in brackets, in their own colors.
 
+A picture is its own size in cells; `{rows 10}` after it makes it ten rows
+tall whatever the size of the caller's cells, so a logo can be sent sharp
+and still take the room it should. A picture or model is made smaller
+where it would leave no room for the lines under it, or for a menu's
+items. A line that starts `{in flow}` is shown only to a caller in Flow,
+and one that starts `{not in flow}` only to any other:
+
+```
+{in flow}![Our logo](pictures/logo.png){rows 10}
+{not in flow}{bold}{bright-cyan}OUR BOARD, in letters drawn for other terminals{/}
+```
+
+### Menus
+
+A menu draws its items in a frame under its screen (`Call::menu`, or
+`Call::menu_titled` with a title in the frame). The arrows move a bar over
+them and Enter takes the one it's on, or an item's key takes it at once.
+The frame is in the sixteen colors and the bar is the caller's theme
+swapped, so both follow the caller's theme.
+
 ### Doors
 
 A door is any program on the server's PATH, in any language. It runs on
@@ -171,9 +191,12 @@ recovery codes. The sysop decides each application from the board's sysop
 menu. A member logs in with handle, password and the app's code; staff
 moderate the forums and triage bugs; the sysop also manages members and
 roles, forums, the tracker's products, the bulletin, and reads the log.
-Guests and members alike have its demonstrations: Neko (`flow-cat`, a door
-its image carries, with Neko's notice) and a gallery of a picture, a
-turning model, an effect and a sound.
+Guests and members alike have its game room (experimental): Mines
+(`flow-mines`, from Flow-Games), each member's best time on each size kept
+for a leaderboard they share, and Neko (`flow-cat`, a door its image
+carries, with Neko's notice); and its demonstrations, a gallery of a
+picture, a turning model, an effect and a sound. In Flow its welcome and
+main menu show Ánië's logo; other terminals get its name in letters.
 Its codes follow United One's rules (arcanii/United_ONE-BackendSystem,
 ADR-0013 and ADR-0024): see `boards/anie/src/crypto.rs`.
 

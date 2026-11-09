@@ -15,6 +15,7 @@ use anie_bbs::crypto::{self, Keys};
 use anie_bbs::mail::Memory;
 use anie_bbs::settings::Settings;
 use anie_bbs::{db, Bbs};
+use flow_bbs::MENU_KEYS;
 use postgres::{Client, NoTls};
 use russh::client;
 use russh::keys::PublicKeyOrCertificate;
@@ -55,6 +56,8 @@ impl Board {
         admin.batch_execute(&format!("CREATE DATABASE {name}")).unwrap();
         let url = format!("{}/{name}", base.rsplit_once('/').unwrap().0);
         let dir = std::env::temp_dir().join(&name);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mines = stand_in_for_mines(&dir);
         let env = [
             ("ANIE_BBS_DATABASE_URL", url.clone()),
             ("ANIE_BBS_SECRET_KEY", KEY.into()),
@@ -63,6 +66,7 @@ impl Board {
             ("ANIE_BBS_HOST_KEY", dir.join("host_key").display().to_string()),
             // A door that ends at once, standing in for flow-cat.
             ("ANIE_BBS_NEKO", if cfg!(windows) { "hostname" } else { "true" }.into()),
+            ("ANIE_BBS_MINES", mines),
         ];
         let (settings, _) = Settings::from_lookup(|k| env.iter().find(|(n, _)| *n == k).map(|(_, v)| v.clone())).unwrap();
         let mail = Arc::new(Memory::default());
@@ -111,6 +115,32 @@ impl Board {
     }
 }
 
+/// A door standing in for flow-mines, in `dir`: it says the best times it
+/// was given, then takes a time for Small from the caller's keys and keeps
+/// it as a win there would. On Windows, a door that ends at once.
+fn stand_in_for_mines(dir: &std::path::Path) -> String {
+    if cfg!(windows) {
+        return "hostname".into();
+    }
+    let script = dir.join("mines.sh");
+    std::fs::write(
+        &script,
+        "#!/bin/sh\n\
+         kept=\"$XDG_DATA_HOME/flow-mines/best.json\"\n\
+         printf 'given: '; cat \"$kept\" 2>/dev/null; printf '\\r\\ntime: '\n\
+         read secs\n\
+         mkdir -p \"$XDG_DATA_HOME/flow-mines\"\n\
+         printf '{\"Small\": %s}' \"$secs\" > \"$kept\"\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    script.display().to_string()
+}
+
 impl Drop for Board {
     fn drop(&mut self) {
         let (base, name) = (self.base.clone(), self.name.clone());
@@ -143,7 +173,7 @@ impl Caller {
     /// for the welcome's menu.
     async fn dial(board: &Board) -> Caller {
         let mut caller = Caller::line(board, &[("TERM_PROGRAM", "flow-terminal")]).await;
-        caller.until("Your choice: ").await;
+        caller.until(MENU_KEYS).await;
         caller
     }
 
@@ -204,24 +234,37 @@ impl Caller {
         self.answer(" Password: ", password).await;
         self.answer("(or a recovery code): ", code).await;
         let said = self.go_on().await;
-        self.until("Your choice: ").await;
+        self.until(MENU_KEYS).await;
         said
     }
 }
 
-/// `text` without its escape sequences.
+/// `text` without its escape sequences: CSIs to their final byte, OSC,
+/// DCS and APC strings to their end, and ESC with one more (ESC 7, ESC 8).
 fn plain(text: &str) -> String {
     let mut out = String::new();
-    let mut chars = text.chars();
+    let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {
-        if c == '' {
-            for c in chars.by_ref() {
-                if c.is_ascii_alphabetic() {
-                    break;
+        if c != '\x1b' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('[') => {
+                for c in chars.by_ref() {
+                    if ('@'..='~').contains(&c) {
+                        break;
+                    }
                 }
             }
-        } else {
-            out.push(c);
+            Some(']' | 'P' | '_') => {
+                while let Some(c) = chars.next() {
+                    if c == '\x07' || (c == '\x1b' && chars.next_if_eq(&'\\').is_some()) {
+                        break;
+                    }
+                }
+            }
+            _ => {}
         }
     }
     out
@@ -267,7 +310,7 @@ async fn apply(board: &Board, caller: &mut Caller, handle: &str, password: &str)
     assert_eq!(recovery.len(), 8, "{said:?}");
     let said = caller.go_on().await;
     assert!(said.contains("Your application is with the sysop"), "{said:?}");
-    caller.until("Your choice: ").await;
+    caller.until(MENU_KEYS).await;
     (seed, step, recovery)
 }
 
@@ -292,7 +335,7 @@ async fn an_applicant_is_let_in_by_the_sysop_then_posts_and_files_a_bug_that_sta
     let said = bryan.log_in("bryan", "correct horse battery", &next_code(&bryan_seed, &mut bryan_step).await).await;
     assert!(plain(&said).contains("1 application waiting for you"), "{said:?}");
     bryan.send("s").await;
-    bryan.until("Your choice: ").await;
+    bryan.until(MENU_KEYS).await;
     bryan.send("a").await;
     let said = bryan.answer(" Number to decide, Q to go back: ", "1").await;
     assert!(said.contains("alice") && said.contains("alice@example.com"), "{said:?}");
@@ -301,9 +344,9 @@ async fn an_applicant_is_let_in_by_the_sysop_then_posts_and_files_a_bug_that_sta
     assert!(said.contains("alice is a member now"), "{said:?}");
     assert_eq!(board.last_mail("alice@example.com").0, "Anie Solutions BBS: welcome, alice");
     bryan.go_on().await;
-    bryan.until("Your choice: ").await;
+    bryan.until(MENU_KEYS).await;
     bryan.send("b").await;
-    bryan.until("Your choice: ").await;
+    bryan.until(MENU_KEYS).await;
 
     // He starts a thread in General.
     bryan.send("f").await;
@@ -315,7 +358,7 @@ async fn an_applicant_is_let_in_by_the_sysop_then_posts_and_files_a_bug_that_sta
     assert!(bryan.go_on().await.contains("Posted."));
     bryan.answer("Q to go back: ", "q").await;
     bryan.answer(" Number to read, Q to go back: ", "q").await;
-    bryan.until("Your choice: ").await;
+    bryan.until(MENU_KEYS).await;
 
     // Alice logs in with a recovery code, finds it new, reads it and replies,
     // her escape left out on the way in.
@@ -337,7 +380,7 @@ async fn an_applicant_is_let_in_by_the_sysop_then_posts_and_files_a_bug_that_sta
     alice.answer(" Number to read, Q to go back: ", "q").await;
 
     // She files a bug.
-    alice.until("Your choice: ").await;
+    alice.until(MENU_KEYS).await;
     alice.send("b").await;
     alice.answer("Q to go back: ", "n").await;
     alice.answer(" Which product (its number)? ", "1").await;
@@ -376,7 +419,7 @@ impl Caller {
         self.answer(" Password: ", password).await;
         self.answer("(or a recovery code): ", code).await;
         let said = self.go_on().await;
-        self.until("Your choice: ").await;
+        self.until(MENU_KEYS).await;
         said
     }
 
@@ -389,7 +432,7 @@ impl Caller {
         let said = self.go_on().await;
         assert!(said.contains("You used a recovery code; 7 are left."), "{said:?}");
         let said = self.go_on().await;
-        self.until("Your choice: ").await;
+        self.until(MENU_KEYS).await;
         said
     }
 }
@@ -467,39 +510,122 @@ async fn a_forgotten_password_is_set_anew_by_a_code_to_the_members_address() {
     erin.answer(" The same again: ", "erin's new password").await;
     assert!(erin.go_on().await.contains("Your password is changed."));
     assert_eq!(board.last_mail("erin@example.com").0, "Anie Solutions BBS: your password was changed");
-    erin.until("Your choice: ").await;
+    erin.until(MENU_KEYS).await;
     let said = erin.log_in("erin", "erin's new password", &next_code(&seed, &mut last).await).await;
     assert!(said.contains("The bulletin"), "{said:?}");
 }
 
-#[tokio::test]
-async fn a_guest_finds_the_demonstrations_neko_hands_the_call_back_and_the_gallery_draws_in_flow() {
-    let Some(board) = Board::new("demos") else { return };
-    let mut guest = Caller::dial(&board).await;
-    guest.send("d").await;
-    let said = guest.until("Your choice: ").await;
-    assert!(plain(&said).contains("Demonstrations") && said.contains("Neko, the cat that chases your pointer"), "{said:?}");
+impl Caller {
+    /// Waits for a door to open: on Windows its pty asks the caller's
+    /// terminal where its cursor is first, and is answered.
+    async fn door_opened(&mut self) {
+        if cfg!(windows) {
+            self.until("\x1b[6n").await;
+            self.send("\x1b[1;1R").await;
+        }
+    }
+}
 
-    guest.send("g").await;
+#[tokio::test]
+async fn a_guest_finds_the_gallery_and_the_game_room_where_neko_and_mines_hand_the_call_back() {
+    let Some(board) = Board::new("games") else { return };
+    let mut guest = Caller::dial(&board).await;
+
+    guest.send("d").await;
     let said = guest.go_on().await;
-    assert!(said.contains("_Ga=T"), "the picture, sent to Flow: {said:?}");
-    assert!(said.contains("_ratty;g;r;id="), "the crystal, registered");
+    assert!(said.contains("_Ga=T"), "the picture, sent to Flow: {said:?}");
+    assert!(said.contains("_ratty;g;r;id="), "the crystal, registered");
     assert!(said.contains("7731;fx=sound;sound=chime"), "the sound");
     assert!(!said.contains("[Flow BBS, a picture]"), "no words in brackets for Flow");
-    guest.until("Your choice: ").await;
+    guest.until(MENU_KEYS).await;
+
+    guest.send("g").await;
+    let said = guest.until(MENU_KEYS).await;
+    let text = plain(&said);
+    assert!(text.contains("The game room") && text.contains("╭─ Game room ─"), "{text:?}");
+    for item in ["M  Mines: clear the field", "L  The Mines leaderboard", "N  Neko, the cat that chases your pointer", "B  Back"] {
+        assert!(text.contains(item), "{item:?} in {text:?}");
+    }
 
     guest.send("n").await;
-    if cfg!(windows) {
-        // Windows' pty asks the caller's terminal where its cursor is first.
-        guest.until("[6n").await;
-        guest.send("[1;1R").await;
-    }
-    let said = guest.until("Your choice: ").await;
+    guest.door_opened().await;
+    let said = guest.until(MENU_KEYS).await;
     assert!(!said.contains("won't come out"), "the door opened, ended, and handed the call back: {said:?}");
-    assert!(said.contains("[0m[?25h"), "plain colors and the cursor after it");
+    assert!(said.contains("\x1b[0m\x1b[?25h"), "plain colors and the cursor after it");
+
+    // A guest's game: their time is theirs, and the board keeps none.
+    guest.send("m").await;
+    guest.door_opened().await;
+    if cfg!(unix) {
+        guest.answer("time: ", "42.5").await;
+        let said = plain(&guest.go_on().await);
+        assert!(said.contains("You cleared Small in 0:42.5.") && said.contains("apply from the welcome"), "{said:?}");
+    }
+    let said = guest.until(MENU_KEYS).await;
+    assert!(!said.contains("isn't here"), "{said:?}");
+    assert_eq!(board.sql(|db| db.query_one("SELECT count(*) FROM mines_best", &[]).unwrap().get::<_, i64>(0)), 0);
+
+    guest.send("l").await;
+    let said = plain(&guest.go_on().await);
+    assert!(said.contains("The Mines leaderboard") && said.contains("No times yet: be the first."), "{said:?}");
+    guest.until(MENU_KEYS).await;
     guest.send("b").await;
-    guest.until("Your choice: ").await;
+    guest.until(MENU_KEYS).await;
     guest.send("q").await;
+    guest.until("Goodbye.").await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn members_race_at_mines_their_bests_kept_and_ranked_on_the_leaderboard() {
+    let Some(board) = Board::new("mines") else { return };
+    let (seed_a, seed_b) = (crypto::new_seed(), crypto::new_seed());
+    board.member("anna", "anna's long password", &seed_a, "member");
+    board.member("ben", "ben's long password", &seed_b, "member");
+    let (mut step_a, mut step_b) = (crypto::step_now().saturating_sub(1), crypto::step_now().saturating_sub(1));
+
+    // Anna clears Small in 30.5: her first, so a best, and first place.
+    let mut anna = Caller::dial(&board).await;
+    anna.log_in("anna", "anna's long password", &next_code(&seed_a, &mut step_a).await).await;
+    anna.send("g").await;
+    anna.until(MENU_KEYS).await;
+    anna.send("m").await;
+    let said = anna.answer("time: ", "30.5").await;
+    assert!(said.contains("given: ") && !said.contains("given: {"), "nothing to beat yet: {said:?}");
+    let said = plain(&anna.go_on().await);
+    assert!(said.contains("A new best on Small: 0:30.5, #1 of 1 on the leaderboard."), "{said:?}");
+    anna.until(MENU_KEYS).await;
+
+    // Ben clears it in 12.25, and takes first place.
+    let mut ben = Caller::dial(&board).await;
+    ben.log_in("ben", "ben's long password", &next_code(&seed_b, &mut step_b).await).await;
+    ben.send("g").await;
+    ben.until(MENU_KEYS).await;
+    ben.send("m").await;
+    ben.answer("time: ", "12.25").await;
+    let said = plain(&ben.go_on().await);
+    assert!(said.contains("A new best on Small: 0:12.2, #1 of 2 on the leaderboard."), "{said:?}");
+    ben.until(MENU_KEYS).await;
+
+    // Anna plays again, given her best to beat, and doesn't: nothing's said
+    // and nothing changes.
+    anna.send("m").await;
+    let said = anna.answer("time: ", "31").await;
+    assert!(said.contains(r#"given: {"Small":30.5}"#), "her best, for the game to say: {said:?}");
+    let said = anna.until(MENU_KEYS).await;
+    assert!(!plain(&said).contains("A new best"), "{said:?}");
+
+    // The leaderboard: Ben, then Anna, her own row marked for her.
+    anna.send("l").await;
+    let said = plain(&anna.go_on().await);
+    let ben_at = said.find("ben").unwrap_or_else(|| panic!("{said:?}"));
+    let anna_at = said.find("anna").unwrap_or_else(|| panic!("{said:?}"));
+    assert!(ben_at < anna_at, "the fastest first: {said:?}");
+    assert!(said.contains("0:12.2") && said.contains("0:30.5") && said.contains("◂ you"), "{said:?}");
+    assert!(said.contains("Medium") && said.contains("No times yet"), "{said:?}");
+
+    let kept: Vec<(String, f64)> = board.sql(|db| db.query("SELECT m.handle, b.seconds FROM mines_best b JOIN members m ON m.id = b.member_id ORDER BY b.seconds", &[]).unwrap().iter().map(|r| (r.get(0), r.get(1))).collect());
+    assert_eq!(kept, [("ben".to_string(), 12.25), ("anna".to_string(), 30.5)]);
 }
 
 #[tokio::test]
@@ -511,10 +637,10 @@ async fn flows_answer_coming_after_windows_console_has_answered_for_it_picks_not
     let mut caller = Caller::line(&board, &[]).await;
     caller.until("\x1b[>0q\x1b[c").await;
     caller.send("\x1b[?61;4;6;7;14;21;22;23;24;28;32;42c").await;
-    caller.until("Your choice: ").await;
+    caller.until(MENU_KEYS).await;
     caller.send("\x1bP>|Flow 0.1.35\x1b\\").await;
     caller.send("q").await;
     let said = caller.until("Goodbye.").await;
     assert!(!said.contains("Forgot your password") && !said.contains("Handle:"), "the answer picked nothing: {said:?}");
-    assert!(said.starts_with("q\r\n"), "the first key was the caller's own: {said:?}");
+    assert!(plain(&said).contains("▸ Q  Hang up"), "the first key was the caller's own: {said:?}");
 }
