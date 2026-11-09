@@ -23,8 +23,10 @@ use crate::key::{self, Key, Read};
 /// What Flow sets `TERM_PROGRAM` (and `LC_TERMINAL`) to.
 pub const FLOW: &str = "flow-terminal";
 
-/// How long a key cut off (an ESC alone) waits for the rest of it.
+/// How long a key cut off (an ESC alone) waits for the rest of it, and a
+/// terminal's answer (a string, longer and less hurried) for the rest of it.
 const REST_OF_A_KEY: Duration = Duration::from_millis(50);
+const REST_OF_A_STRING: Duration = Duration::from_secs(1);
 
 /// The caller's window: cells, and pixels where their terminal says.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -163,16 +165,21 @@ impl Call {
         self.write_all(escape.as_bytes())
     }
 
-    /// The next key, waiting for it; `None` once they've hung up.
+    /// The next key, waiting for it; `None` once they've hung up. An
+    /// XTVERSION answer that comes after the call stopped waiting for it (a
+    /// terminal behind Windows' console has DA1 answered for it, first) is no
+    /// key: it still says who's calling.
     pub fn key(&mut self) -> io::Result<Option<Key>> {
         loop {
             let bytes: Vec<u8> = self.pending.iter().copied().collect();
             match key::read(&bytes) {
                 Read::Key(k, n) => {
                     self.pending.drain(..n);
-                    return Ok(Some(k));
+                    if !self.heard_late(&k) {
+                        return Ok(Some(k));
+                    }
                 }
-                Read::Partial => match self.events.recv_timeout(REST_OF_A_KEY) {
+                Read::Partial => match self.events.recv_timeout(if key::in_string(&bytes) { REST_OF_A_STRING } else { REST_OF_A_KEY }) {
                     Ok(event) => {
                         if let Some(k) = self.take(event) {
                             return Ok(Some(k));
@@ -210,6 +217,20 @@ impl Call {
                 Some(Key::Resize)
             }
         }
+    }
+
+    /// Takes in an XTVERSION answer that came late: Flow's makes the call
+    /// Flow's, another's names the terminal. Whether `k` was one.
+    fn heard_late(&mut self, k: &Key) -> bool {
+        let Key::Other(b) = k else { return false };
+        let Some(name) = b.strip_prefix(b"\x1bP>|").and_then(|b| b.strip_suffix(b"\x1b\\")) else { return false };
+        let name = String::from_utf8_lossy(name).into_owned();
+        if let Some(version) = name.strip_prefix("Flow ") {
+            self.caller = Caller::Flow { version: Some(version.to_string()) };
+        } else if let Caller::Other { name: n, .. } = &mut self.caller {
+            *n = Some(name);
+        }
+        true
     }
 
     fn hang_up(&mut self) -> Option<Key> {
@@ -348,6 +369,34 @@ mod tests {
         assert!(start.elapsed() < Duration::from_secs(1));
         assert!(!c.is_flow());
         assert_eq!(c.key().unwrap(), Some(Key::Char('h')), "what came is kept as keys");
+    }
+
+    #[test]
+    fn a_late_xtversion_answer_is_no_keys_and_still_says_its_flow() {
+        // Windows' console answers DA1 for the terminal, at once; Flow's own
+        // answer to XTVERSION comes after, with letters a menu would take.
+        let (mut c, tx, _sent) = call(&[]);
+        tx.send(Event::Data(b"\x1b[?61;4;6;7;14;21;22;23;24;28;32;42c".to_vec())).unwrap();
+        c.find_caller(Duration::from_secs(1));
+        assert!(!c.is_flow());
+        tx.send(Event::Data(b"\x1bP>|Flow 0.1.35\x1b\\".to_vec())).unwrap();
+        tx.send(Event::Data(b"l".to_vec())).unwrap();
+        assert_eq!(c.key().unwrap(), Some(Key::Char('l')), "the answer is no keys: the first key is the caller's");
+        assert_eq!(c.caller(), &Caller::Flow { version: Some("0.1.35".into()) });
+    }
+
+    #[test]
+    fn a_late_answer_split_in_two_is_waited_for_whole() {
+        let (mut c, tx, _sent) = call(&[]);
+        tx.send(Event::Data(b"\x1bP>|Flo".to_vec())).unwrap();
+        let rest = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(200));
+            tx.send(Event::Data(b"w 0.1.35\x1b\\q".to_vec())).unwrap();
+            tx
+        });
+        assert_eq!(c.key().unwrap(), Some(Key::Char('q')), "200 ms is a key's wait four times over, and a string's still");
+        assert!(c.is_flow());
+        drop(rest.join().unwrap());
     }
 
     #[test]

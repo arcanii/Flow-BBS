@@ -139,17 +139,26 @@ struct Caller {
 }
 
 impl Caller {
+    /// Calls as Flow's `dial` does, its variables saying it's Flow, and waits
+    /// for the welcome's menu.
     async fn dial(board: &Board) -> Caller {
+        let mut caller = Caller::line(board, &[("TERM_PROGRAM", "flow-terminal")]).await;
+        caller.until("Your choice: ").await;
+        caller
+    }
+
+    /// Logs in as the guest with a pty and `env`, and opens the shell.
+    async fn line(board: &Board, env: &[(&str, &str)]) -> Caller {
         let mut session = client::connect(Arc::new(client::Config::default()), board.address, Dialer).await.unwrap();
         assert!(session.authenticate_none("guest").await.unwrap().success());
         let channel = session.channel_open_session().await.unwrap();
         channel.request_pty(false, "xterm-256color", 100, 40, 0, 0, &[]).await.unwrap();
-        channel.set_env(false, "TERM_PROGRAM", "flow-terminal").await.unwrap();
+        for (name, value) in env {
+            channel.set_env(false, *name, *value).await.unwrap();
+        }
         channel.request_shell(true).await.unwrap();
         std::mem::forget(session);
-        let mut caller = Caller { channel, heard: String::new() };
-        caller.until("Your choice: ").await;
-        caller
+        Caller { channel, heard: String::new() }
     }
 
     /// What the board says, up to and including `text`.
@@ -491,4 +500,21 @@ async fn a_guest_finds_the_demonstrations_neko_hands_the_call_back_and_the_galle
     guest.send("b").await;
     guest.until("Your choice: ").await;
     guest.send("q").await;
+}
+
+#[tokio::test]
+async fn flows_answer_coming_after_windows_console_has_answered_for_it_picks_nothing_at_the_welcome() {
+    let Some(board) = Board::new("late_answer") else { return };
+    // plain ssh from Flow on Windows: no variables, so the board asks which
+    // terminal it is; the console between answers DA1 at once, and Flow's
+    // own answer to XTVERSION comes after, its F a key the welcome takes.
+    let mut caller = Caller::line(&board, &[]).await;
+    caller.until("\x1b[>0q\x1b[c").await;
+    caller.send("\x1b[?61;4;6;7;14;21;22;23;24;28;32;42c").await;
+    caller.until("Your choice: ").await;
+    caller.send("\x1bP>|Flow 0.1.35\x1b\\").await;
+    caller.send("q").await;
+    let said = caller.until("Goodbye.").await;
+    assert!(!said.contains("Forgot your password") && !said.contains("Handle:"), "the answer picked nothing: {said:?}");
+    assert!(said.starts_with("q\r\n"), "the first key was the caller's own: {said:?}");
 }
