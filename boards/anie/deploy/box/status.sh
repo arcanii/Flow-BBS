@@ -9,7 +9,7 @@ REPO=/home/bryan/flow-bbs
 say() { printf 'status: %s\n' "$*"; }
 sql() { docker exec anie-bbs-db-1 psql -U anie_bbs -d anie_bbs -At -c "$1" 2>&1 | head -n 1; }
 
-say "at $(date -u +%Y-%m-%dT%H:%M:%SZ), clone at $(git -C "$REPO" rev-parse --short HEAD 2>/dev/null)"
+say "at $(date -u +%Y-%m-%dT%H:%M:%SZ), clone at $(git -c safe.directory="$REPO" -C "$REPO" rev-parse --short HEAD 2>/dev/null)"
 for c in anie-bbs-db-1 anie-bbs-bbs-1; do
   say "$c $(docker inspect --format '{{.State.Status}} since {{.State.StartedAt}} restarts={{.RestartCount}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}-{{end}}' "$c" 2>/dev/null || echo absent)"
 done
