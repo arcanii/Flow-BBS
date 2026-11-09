@@ -1,0 +1,13 @@
+[package]
+name = "flow-bbsd"
+description = "Flow's stock BBS server: runs a board from a folder, built on the flow-bbs SDK"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+flow-bbs = { path = "../sdk" }
+serde = { version = "1", features = ["derive"] }
+toml = "1"

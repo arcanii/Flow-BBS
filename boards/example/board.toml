@@ -1,0 +1,6 @@
+# A board for flow-bbsd: `flow-bbsd boards/example`. Every line but the
+# name may be left out; paths are from this folder.
+name = "Example Board"
+address = "0.0.0.0:2222"
+guest = "guest"
+host_key = "host_key"
