@@ -54,6 +54,6 @@ systemctl daemon-reload
 systemctl enable --now anie-bbs-backup.timer >/dev/null 2>&1
 say "timer $(systemctl is-active anie-bbs-backup.timer), next $(systemctl show -P NextElapseUSecRealtime anie-bbs-backup.timer)"
 systemctl start anie-bbs-backup.service
-say "$(journalctl -u anie-bbs-backup.service -n 1 --no-pager -o cat 2>/dev/null)"
+say "$(journalctl -u anie-bbs-backup.service -n 20 --no-pager -o cat 2>/dev/null | grep '^anie-bbs-backup:' | tail -n 1)"
 say "backups $(ls -1 /root/anie-bbs/backups/*.dump 2>/dev/null | wc -l)"
 say "done"
