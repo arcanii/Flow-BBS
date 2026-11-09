@@ -13,6 +13,8 @@ be signed from there.
 | `/home/bryan/flow-bbs` | The clone of arcanii/Flow-BBS, bryan's, at the commit on `main` that `02-clone.sh` names |
 | `/root/anie-bbs/bbs.env` | `ANIE_BBS_DB_PASSWORD`, `ANIE_BBS_SECRET_KEY`: made on the box, never printed |
 | `/root/anie-bbs/smtp.env` | Gmail's relay and its app password: written by Bryan, by hand |
+| `/root/anie-bbs/flow-games-key` | The deploy key that reads arcanii/Flow-Games (private), for `flow-mines`: made on the box, never leaves it; read-only on GitHub |
+| `/root/anie-bbs/flow-games` | The clone of Flow-Games, root's, at the commit on `master` that `11-games-clone.sh` names: the image's second context |
 | `/root/anie-bbs/backups/` | Nightly `pg_dump`s, fourteen days |
 | volumes `anie-bbs_db`, `anie-bbs_home` | The database; the board's SSH host key |
 | `127.0.0.1:5440` | PostgreSQL, the box's loopback only |
@@ -41,6 +43,9 @@ opens no seed.
 | — | Bryan, on the board | Apply as anyone does: handle, email, password, authenticator |
 | 8 | `08-backups.sh` | The nightly backup timer, and one backup now |
 | 9 | `09-sysop.sh` | Makes Bryan's handle the sysop |
+| 10 | `10-games-key.sh` | Once: the deploy key for Flow-Games made (never over one that's there), its public half printed |
+| — | On GitHub | That public half added to arcanii/Flow-Games as a deploy key, read-only |
+| 11 | `11-games-clone.sh` | Flow-Games' clone, at the pinned commit; before each build from then on |
 
 ### The Gmail app password
 
@@ -72,8 +77,10 @@ logins and failures in the last day, the last backup, disk, and the board's
 recent log. Approve it once with a repeat window and it can be run any
 number of times in it.
 
-A new version: `02-clone.sh` at the new commit, `04-build.sh`, `06-start.sh`
-(compose recreates the board's container; the database and host key stay).
+A new version: `02-clone.sh` at the new commit, `11-games-clone.sh` at
+Flow-Games' (the same one, unless Mines is to change), `04-build.sh`,
+`06-start.sh` (compose recreates the board's container; the database and
+host key stay).
 The schema migrates itself when the board starts.
 
 A restore: stop the board (`docker compose ... stop bbs`), then

@@ -1,8 +1,11 @@
 # The Anie Solutions BBS: built from the workspace (the context is the
 # repository's root), run as a user of its own from a read-only image, with
 # flow-cat (Neko, a door of the game room's) on its PATH and Neko's notice
-# beside it, as its sprites' terms ask. compose.yaml builds it; nothing
-# secret goes into it.
+# beside it, as its sprites' terms ask, and flow-mines (Mines, the game
+# room's other door) from arcanii/Flow-Games, a second context (flow-games)
+# that compose.yaml names. compose.yaml builds it; nothing secret goes into
+# it: Flow-Games' clone is made on the box with its deploy key, which the
+# build never sees.
 
 FROM rust:1.99-slim-trixie AS build
 WORKDIR /src
@@ -12,10 +15,20 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     cargo build --release --locked -p anie-bbs -p flow-cat  && cp target/release/anie-bbs target/release/flow-cat /usr/local/bin/
 
+# Mines, from Flow-Games' own workspace and lock.
+FROM rust:1.99-slim-trixie AS games
+WORKDIR /games
+COPY --from=flow-games . .
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/games/target \
+    cargo build --release --locked -p flow-mines && cp target/release/flow-mines /usr/local/bin/
+
 FROM debian:trixie-slim
 RUN useradd --system --uid 10001 --home-dir /var/lib/anie-bbs --shell /usr/sbin/nologin bbs \
  && mkdir -p /var/lib/anie-bbs && chown bbs:bbs /var/lib/anie-bbs && chmod 700 /var/lib/anie-bbs
 COPY --from=build /usr/local/bin/anie-bbs /usr/local/bin/flow-cat /usr/local/bin/
+COPY --from=games /usr/local/bin/flow-mines /usr/local/bin/
 COPY doors/cat/sprites/NOTICE.md /usr/share/doc/flow-cat/NOTICE.md
 COPY boards/anie/screens /opt/anie-bbs/screens
 ENV ANIE_BBS_SCREENS=/opt/anie-bbs/screens \
