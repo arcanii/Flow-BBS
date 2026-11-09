@@ -117,14 +117,19 @@ When it ends, the caller is back at the menu.
 
 ### The cat
 
-`flow-cat` (`doors/cat`) is a door of this repository's own: an orange
-tabby that chases the caller's pointer. In Flow it's a picture, its frames
-sent once and moved by their placeholder cells; once it's caught up it
-sits, grooms, scratches, yawns and falls asleep, moving the pointer
-startles it awake, and Flow's liquid ripples when it pounces. In another
+`flow-cat` (`doors/cat`) is a door of this repository's own: Neko, the
+cat that chases the pointer, from 1989's desktops. In Flow it's Neko's own
+pictures, its frames sent once and moved by their placeholder cells; it
+runs to the caller's pointer facing one of eight ways, and once it's
+caught up it sits, washes, scratches, yawns and falls asleep. Moving the
+pointer startles it awake; where the pointer's past the window's edge it
+claws at that edge; and Flow's liquid ripples when it pounces. In another
 terminal it's a cat in text. Where there's no mouse, the arrows move a
-mark for it to chase. The example board offers it as `c`. Its frames are
-drawn as text in `doors/cat/sprites.txt`, a letter a pixel.
+mark for it to chase. The example board offers it as `c`.
+
+Its sprites are Kenji Gotoh's for NekoDA, free to use, modify and
+redistribute, carried under those terms rather than this repository's
+licence (`doors/cat/sprites/NOTICE.md`).
 
 It runs in a Flow tab of its own too: `cargo run -p flow-cat`.
 
@@ -158,4 +163,6 @@ Rust 1.95 or later.
 
 ## Licence
 
-MIT or Apache-2.0, at your choice (`LICENSE-MIT`, `LICENSE-APACHE`).
+MIT or Apache-2.0, at your choice (`LICENSE-MIT`, `LICENSE-APACHE`),
+but for Neko's sprites in `doors/cat/sprites/`, which are carried under
+their own terms (`doors/cat/sprites/NOTICE.md`).

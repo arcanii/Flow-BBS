@@ -12,12 +12,12 @@ screen = "welcome"
 items = [
   { key = "a", label = "About this board", screen = "about" },
   { key = "g", label = "The gallery", screen = "gallery" },
-  { key = "c", label = "Chase the cat (move your mouse)", door = "cat" },
+  { key = "c", label = "Chase Neko, the cat (move your mouse)", door = "cat" },
   { key = "m", label = "Play Flow Mines", door = "mines" },
   { key = "q", label = "Hang up", hang_up = true },
 ]
 
-# A cat that chases the caller's pointer, from this repository
+# Neko, the cat that chases the caller's pointer, from this repository
 # (doors/cat): `cargo build --release -p flow-cat`, then flow-cat on the
 # server's PATH.
 [doors.cat]

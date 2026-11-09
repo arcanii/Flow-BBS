@@ -1,13 +1,15 @@
-//! flow-cat: a cat that chases the pointer, a door for Flow's BBSes (and a
-//! toy in a Flow tab of its own). In Flow it's a picture of an orange tabby,
-//! its frames sent once and shown by placeholder cells moved where it runs;
-//! it sits, grooms, scratches, yawns and sleeps when it's caught up, and
-//! Flow's liquid ripples when it pounces. In another terminal it's a cat in
+//! flow-cat: Neko, the cat that chases the pointer, as a door for Flow's
+//! BBSes (and a toy in a Flow tab of its own). In Flow it's Neko's own
+//! pictures, its frames sent once and shown by placeholder cells moved where
+//! it runs; it sits, washes, scratches, yawns and sleeps when it's caught up,
+//! claws at the edge the pointer's past, and Flow's liquid ripples when it
+//! pounces. In another terminal it's a cat in
 //! text. The pointer is the mouse; the arrows move a mark for it to chase
 //! where there's no mouse. `q` or Esc leaves.
 //!
-//! Its frames are drawn in `sprites.txt`, a cat of Flow-BBS's own; what it
-//! does is the old desktop cat's, in `cat.rs`.
+//! It's Neko, the desktop cat of 1989: its frames are Kenji Gotoh's, free to
+//! use, modify and redistribute (`sprites/NOTICE.md`), and what it does is
+//! Neko's, in `cat.rs`.
 
 mod cat;
 mod sprites;
@@ -91,7 +93,7 @@ fn play() -> io::Result<()> {
     execute!(out, terminal::EnterAlternateScreen, cursor::Hide, terminal::Clear(terminal::ClearType::All))?;
     let mut term = Query::new().pictures().cell().area().wait(Duration::from_millis(800)).ask();
     let done = chase(&mut term, &mut out);
-    let _ = term.send(Frame::ALL.iter().flat_map(|f| (0..ROWS).map(move |r| picture::delete(BASE + f.index() as u32 * ROWS as u32 + r as u32))).collect::<String>().as_bytes());
+    let _ = term.send(Frame::all().into_iter().flat_map(|f| (0..ROWS).map(move |r| picture::delete(id(f, r)))).collect::<String>().as_bytes());
     let _ = execute!(out, DisableMouseCapture, terminal::LeaveAlternateScreen, cursor::Show);
     let _ = terminal::disable_raw_mode();
     done
@@ -119,7 +121,7 @@ fn send_frames(term: &mut Terminal, cell: (f32, f32)) -> io::Result<Look> {
     let scale = ((h as f32 * cell.1) / SIZE as f32).ceil().max(1.0) as usize;
     let side = (SIZE * scale) as u32;
     let mut sent = String::new();
-    for frame in Frame::ALL {
+    for frame in Frame::all() {
         let image = Image::rgba(side, side, sprites::rgba(frame, scale));
         if term.caps.bare {
             for r in 0..h {
@@ -144,7 +146,7 @@ fn draw(look: &Look, frame: Frame, col: u16, row: u16) -> String {
     match look {
         Look::Pictures { w, h } => picture::placeholders(id(frame, 0), 1, (col, row), *w, *h),
         Look::Bare { w, h } => (0..*h).map(|r| format!("\x1b[{};{}H{}", row + r + 1, col + 1, picture::bare_row(id(frame, r), *w))).collect(),
-        Look::Text => sprites::text(frame).iter().enumerate().map(|(r, line)| format!("\x1b[{};{}H\x1b[33m{line}\x1b[0m", row + r as u16 + 1, col + 1)).collect(),
+        Look::Text => sprites::text(frame).iter().enumerate().map(|(r, line)| format!("\x1b[{};{}H\x1b[1m{line}\x1b[0m", row + r as u16 + 1, col + 1)).collect(),
     }
 }
 
