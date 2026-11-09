@@ -115,6 +115,19 @@ in Flow, its environment has `TERM_PROGRAM=flow-terminal`, so Flow's games
 (Flow Mines, Flow Rogue, Flow Invaders) draw as they do in a Flow tab.
 When it ends, the caller is back at the menu.
 
+### The cat
+
+`flow-cat` (`doors/cat`) is a door of this repository's own: an orange
+tabby that chases the caller's pointer. In Flow it's a picture, its frames
+sent once and moved by their placeholder cells; once it's caught up it
+sits, grooms, scratches, yawns and falls asleep, moving the pointer
+startles it awake, and Flow's liquid ripples when it pounces. In another
+terminal it's a cat in text. Where there's no mouse, the arrows move a
+mark for it to chase. The example board offers it as `c`. Its frames are
+drawn as text in `doors/cat/sprites.txt`, a letter a pixel.
+
+It runs in a Flow tab of its own too: `cargo run -p flow-cat`.
+
 ## Running a board
 
 - Callers log in as the board's guest login, with no password. Any other

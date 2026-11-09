@@ -1,5 +1,5 @@
 [workspace]
-members = ["sdk", "server"]
+members = ["sdk", "server", "doors/cat"]
 resolver = "2"
 
 [workspace.package]

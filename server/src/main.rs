@@ -326,5 +326,6 @@ mod tests {
         assert_eq!(board.name, "Example Board");
         assert_eq!(config.address, "0.0.0.0:2222");
         assert!(board.doors.contains_key("mines"));
+        assert_eq!(board.doors["cat"].program, "flow-cat");
     }
 }

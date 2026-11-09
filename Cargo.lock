@@ -645,6 +645,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow-cat"
+version = "0.1.0"
+dependencies = [
+ "flow-sdk",
+]
+
+[[package]]
 name = "flow-sdk"
 version = "0.1.3"
 source = "git+https://github.com/arcanii/Flow-SDK?tag=v0.1.3#4b572d113aac857decda256c87c3b12dcea26c9e"

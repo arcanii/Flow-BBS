@@ -1,0 +1,11 @@
+[package]
+name = "flow-cat"
+description = "A cat that chases the pointer: a door for Flow's BBSes, drawn with Flow's pictures and effects"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+flow-sdk = { workspace = true }

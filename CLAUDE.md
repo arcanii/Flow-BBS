@@ -59,9 +59,16 @@ ssh -p 2222 guest@localhost             # call it
 - `server/src/main.rs`: `flow-bbsd`, reading `board.toml` (menus, items,
   doors; every name checked at the start) and running a call through its
   menus.
+- `doors/cat`: `flow-cat`, the cat that chases the pointer, a door of the
+  example board's. `sprites.txt` is its frames, a letter a pixel (a cat of
+  this repository's own: not the old Neko's sprites, which aren't ours to
+  carry); `cat.rs` what it does each tick (pure, tested); `main.rs` the
+  terminal: Flow's SDK's `Query` for pictures and a cell's size, the frames
+  sent once (as strips with bare cells where `Caps::bare`, on Windows), the
+  mouse through crossterm, effects and sounds through `send_effects`.
 - `boards/example`: the example board, its banner drawn in code once
-  (`pictures/banner.png`) and a crystal (`pictures/crystal.obj`); its door
-  is `flow-mines`, which must be on the server's PATH.
+  (`pictures/banner.png`) and a crystal (`pictures/crystal.obj`); its doors
+  are `flow-cat` and `flow-mines`, which must be on the server's PATH.
 
 ## Never without the user's word
 
