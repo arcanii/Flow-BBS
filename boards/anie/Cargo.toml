@@ -1,0 +1,29 @@
+[package]
+name = "anie-bbs"
+description = "The Anie Solutions BBS: members by the sysop's approval, an authenticator at login, forums and a bug tracker, in PostgreSQL"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+flow-bbs = { path = "../../sdk" }
+postgres = "0.19"
+argon2 = "0.5"
+chacha20poly1305 = "0.10"
+hmac = "0.12"
+sha1 = "0.10"
+sha2 = "0.10"
+subtle = "2"
+getrandom = "0.3"
+data-encoding = "2"
+qrcodegen = "1.8"
+unicode-width = "0.2"
+# Mail over rustls with ring, as russh is, so it builds without aws-lc's toolchain.
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "hostname", "rustls-tls"] }
+
+[dev-dependencies]
+russh = { workspace = true }
+tokio = { workspace = true }

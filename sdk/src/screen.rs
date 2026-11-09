@@ -280,6 +280,13 @@ impl Call {
         Ok(row)
     }
 
+    /// Clears the caller's screen to draw a board's own on it, the last
+    /// screen's pictures and models forgotten as `show` forgets them.
+    pub fn clear(&mut self) -> io::Result<()> {
+        self.forget()?;
+        self.send("[2J[H")
+    }
+
     /// Forgets the pictures and models the call put on the caller's
     /// screen, so a Flow that's had many screens holds only the last's.
     pub(crate) fn forget(&mut self) -> io::Result<()> {

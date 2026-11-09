@@ -1,0 +1,2 @@
+# Scripts run on Linux boxes keep Unix line endings wherever they are checked out.
+*.sh text eol=lf

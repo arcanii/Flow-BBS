@@ -6,12 +6,15 @@
 //! keys go to the call as they come; what the call writes goes back down
 //! the channel; when the call returns, the channel closes with its exit
 //! status. A command (`ssh board ls`) is refused: a board is no shell.
+//! Past the board's limits (connections open at once, and from one
+//! address), a new connection is turned away before it logs in.
 
 use std::collections::HashMap;
 use std::io;
+use std::net::{IpAddr, SocketAddr};
 use std::path::Path;
 use std::sync::mpsc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use russh::keys::ssh_key::LineEnding;
@@ -37,7 +40,7 @@ pub(crate) fn run(listener: std::net::TcpListener, config: Config, board: Arc<dy
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
     runtime.block_on(async move {
         let socket = tokio::net::TcpListener::from_std(listener)?;
-        let mut server = Listener { board, config: Arc::new(config) };
+        let mut server = Listener { board, config: Arc::new(config), open: Arc::default() };
         server.run_on_socket(Arc::new(ssh), &socket).await
     })
 }
@@ -65,13 +68,60 @@ pub(crate) fn host_key(path: &Path) -> io::Result<PrivateKey> {
 struct Listener {
     board: Arc<dyn Board>,
     config: Arc<Config>,
+    open: Arc<Mutex<Open>>,
+}
+
+/// The connections open now: how many, and from where.
+#[derive(Default)]
+struct Open {
+    total: usize,
+    by_address: HashMap<IpAddr, usize>,
+}
+
+/// A connection's place among those open, given back when it ends.
+struct Slot {
+    open: Arc<Mutex<Open>>,
+    ip: Option<IpAddr>,
+}
+
+impl Slot {
+    /// A place for a connection from `address`, if the limits leave one.
+    fn take(open: &Arc<Mutex<Open>>, address: Option<SocketAddr>, config: &Config) -> Option<Slot> {
+        let ip = address.map(|a| a.ip());
+        let mut o = open.lock().unwrap_or_else(|e| e.into_inner());
+        let here = ip.map_or(0, |ip| o.by_address.get(&ip).copied().unwrap_or(0));
+        if o.total >= config.max_calls || here >= config.max_calls_per_address {
+            return None;
+        }
+        o.total += 1;
+        if let Some(ip) = ip {
+            *o.by_address.entry(ip).or_default() += 1;
+        }
+        Some(Slot { open: open.clone(), ip })
+    }
+}
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        let mut o = self.open.lock().unwrap_or_else(|e| e.into_inner());
+        o.total -= 1;
+        if let Some(ip) = self.ip {
+            if let Some(n) = o.by_address.get_mut(&ip) {
+                *n -= 1;
+                if *n == 0 {
+                    o.by_address.remove(&ip);
+                }
+            }
+        }
+    }
 }
 
 impl russh::server::Server for Listener {
     type Handler = Connection;
 
-    fn new_client(&mut self, _: Option<std::net::SocketAddr>) -> Connection {
-        Connection { board: self.board.clone(), config: self.config.clone(), user: None, channels: HashMap::new() }
+    fn new_client(&mut self, address: Option<SocketAddr>) -> Connection {
+        let slot = Slot::take(&self.open, address, &self.config);
+        Connection { board: self.board.clone(), config: self.config.clone(), address, slot, user: None, channels: HashMap::new() }
     }
 }
 
@@ -79,6 +129,9 @@ impl russh::server::Server for Listener {
 struct Connection {
     board: Arc<dyn Board>,
     config: Arc<Config>,
+    address: Option<SocketAddr>,
+    /// `None` when the limits were full as it came: it's turned away.
+    slot: Option<Slot>,
     user: Option<String>,
     channels: HashMap<ChannelId, Line>,
 }
@@ -94,12 +147,15 @@ struct Line {
 }
 
 impl Connection {
-    fn guest(&mut self, user: &str) -> Auth {
+    fn guest(&mut self, user: &str) -> Result<Auth, russh::Error> {
+        if self.slot.is_none() {
+            return Err(russh::Error::Disconnect);
+        }
         if user == self.config.guest {
             self.user = Some(user.to_string());
-            Auth::Accept
+            Ok(Auth::Accept)
         } else {
-            Auth::reject()
+            Ok(Auth::reject())
         }
     }
 }
@@ -108,11 +164,11 @@ impl russh::server::Handler for Connection {
     type Error = russh::Error;
 
     async fn auth_none(&mut self, user: &str) -> Result<Auth, Self::Error> {
-        Ok(self.guest(user))
+        self.guest(user)
     }
 
     async fn auth_password(&mut self, user: &str, _: &str) -> Result<Auth, Self::Error> {
-        Ok(self.guest(user))
+        self.guest(user)
     }
 
     async fn channel_open_session(&mut self, channel: Channel<Msg>, reply: ChannelOpenHandle, _: &mut Session) -> Result<(), Self::Error> {
@@ -149,7 +205,7 @@ impl russh::server::Handler for Connection {
         let (out, mut said) = unbounded_channel();
         line.events = Some(events);
         let user = self.user.clone().unwrap_or_default();
-        let mut call = Call::new(user, line.term.clone(), line.size, line.env.clone(), heard, out.clone());
+        let mut call = Call::new(user, self.address, line.term.clone(), line.size, line.env.clone(), heard, out.clone());
         let (board, wait) = (self.board.clone(), self.config.ask);
         std::thread::spawn(move || {
             call.find_caller(wait);
@@ -233,6 +289,23 @@ mod tests {
             assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600, "only its owner may read it");
         }
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn connections_past_the_limits_are_turned_away_and_their_places_given_back() {
+        let config = Config { max_calls: 3, max_calls_per_address: 2, ..Config::default() };
+        let open = Arc::default();
+        let at = |n: u8| Some(SocketAddr::from(([10, 0, 0, n], 5000)));
+        let a1 = Slot::take(&open, at(1), &config).unwrap();
+        let a2 = Slot::take(&open, at(1), &config).unwrap();
+        assert!(Slot::take(&open, at(1), &config).is_none(), "two from one address");
+        let b = Slot::take(&open, at(2), &config).unwrap();
+        assert!(Slot::take(&open, at(3), &config).is_none(), "three in all");
+        drop(a1);
+        assert!(Slot::take(&open, at(1), &config).is_some(), "a place given back is taken again");
+        drop((a2, b));
+        assert_eq!(open.lock().unwrap().total, 0);
+        assert!(open.lock().unwrap().by_address.is_empty());
     }
 
     #[test]

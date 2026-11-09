@@ -36,6 +36,7 @@
 
 mod call;
 mod door;
+mod input;
 mod key;
 mod menu;
 mod screen;
@@ -49,6 +50,7 @@ use std::time::Duration;
 
 pub use call::{Call, Caller, Size, FLOW};
 pub use door::Door;
+pub use input::printable;
 pub use flow_sdk as flow;
 pub use key::Key;
 pub use menu::Item;
@@ -86,6 +88,10 @@ pub struct Config {
     pub ask: Duration,
     /// How long a call may sit with no traffic before it's hung up.
     pub idle: Option<Duration>,
+    /// How many connections may be open at once, and how many from one
+    /// address: past either, a new one is turned away before it logs in.
+    pub max_calls: usize,
+    pub max_calls_per_address: usize,
 }
 
 impl Default for Config {
@@ -96,6 +102,8 @@ impl Default for Config {
             guest: "guest".into(),
             ask: Duration::from_secs(1),
             idle: Some(Duration::from_secs(60 * 60)),
+            max_calls: 64,
+            max_calls_per_address: 4,
         }
     }
 }
