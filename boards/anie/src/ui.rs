@@ -1,11 +1,12 @@
 //! How the board draws what isn't a screen file: a heading, text wrapped to
-//! the caller's window, a long text a screenful at a time, questions, and a
-//! line editor for messages. What a member wrote is always shown through
-//! `printable`, so it can't carry an escape onto another member's screen.
+//! the caller's window, a long text a screenful at a time, questions, and
+//! messages written in the SDK's full-screen editor. What a member wrote is
+//! always shown through `printable`, so it can't carry an escape onto
+//! another member's screen.
 
 use std::io;
 
-use flow_bbs::{printable, Call};
+use flow_bbs::{printable, Call, Draft, Preview, Previewer};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub const BOLD: &str = "\x1b[1m";
@@ -149,93 +150,20 @@ pub fn done(call: &mut Call, words: &str) -> io::Result<()> {
 pub const MESSAGE_LINES: usize = 200;
 pub const MESSAGE_BYTES: usize = 16 * 1024;
 
-/// What a line typed into the editor asks for.
-#[derive(Debug, PartialEq, Eq)]
-pub enum Line {
-    Save,
-    Abort,
-    List,
-    TakeBack,
-    Clear,
-    Help,
-    Text(String),
+/// A message written full-screen in the SDK's editor, titled `title`
+/// with `hint` under it, starting from `start`, previewed (Ctrl+P) as
+/// `preview` shows it: `None` if it's given up (or they hang up).
+pub fn editor(call: &mut Call, title: &str, hint: &str, start: &str, preview: Option<Previewer>) -> io::Result<Option<String>> {
+    call.edit(&Draft { title, hint, text: start, max_lines: MESSAGE_LINES, max_bytes: MESSAGE_BYTES, preview })
 }
 
-impl Line {
-    pub fn read(typed: &str) -> Line {
-        match typed.trim().to_ascii_lowercase().as_str() {
-            "/s" => Line::Save,
-            "/a" => Line::Abort,
-            "/l" => Line::List,
-            "/d" => Line::TakeBack,
-            "/c" => Line::Clear,
-            "/?" | "/h" => Line::Help,
-            _ => Line::Text(typed.trim_end().to_string()),
-        }
-    }
-}
-
-const EDITOR_HELP: &str = "Type your message a line at a time. On a line of its own: /s saves it, /a gives it up, /l lists it, /d takes back the last line, /c starts again.";
-
-/// A message typed a line at a time, starting from `start`: `None` if it's
-/// given up (or they hang up).
-pub fn editor(call: &mut Call, start: &str) -> io::Result<Option<String>> {
+/// A preview of `text` as the forums and the tracker show what someone
+/// wrote: under their handle and when (now), wrapped to the window.
+pub fn as_posted(call: &Call, handle: &str, text: &str) -> Preview {
     let (cols, _) = window(call);
-    let mut lines: Vec<String> = if start.is_empty() { Vec::new() } else { printable(start).lines().map(str::to_string).collect() };
-    for l in wrap(EDITOR_HELP, cols.saturating_sub(2)) {
-        call.say(&format!(" {DIM}{l}{PLAIN}\n"))?;
-    }
-    if !lines.is_empty() {
-        list(call, &lines)?;
-    }
-    loop {
-        let Some(typed) = call.ask(&format!("{DIM}{:>3}:{PLAIN} ", lines.len() + 1), cols.saturating_sub(6).clamp(20, 200))? else {
-            if call.hung_up() {
-                return Ok(None);
-            }
-            match yes(call, " Give up this message?")? {
-                Some(true) | None => return Ok(None),
-                Some(false) => continue,
-            }
-        };
-        match Line::read(&typed) {
-            Line::Save => {
-                let text = lines.join("\n").trim().to_string();
-                if text.is_empty() {
-                    oops(call, "There's nothing to save yet. /a gives it up.")?;
-                } else {
-                    return Ok(Some(text));
-                }
-            }
-            Line::Abort => return Ok(None),
-            Line::List => list(call, &lines)?,
-            Line::TakeBack => {
-                if lines.pop().is_some() {
-                    call.say(&format!(" {DIM}Took back line {}.{PLAIN}\n", lines.len() + 1))?;
-                }
-            }
-            Line::Clear => {
-                lines.clear();
-                call.say(&format!(" {DIM}Starting again.{PLAIN}\n"))?;
-            }
-            Line::Help => call.say(&format!(" {DIM}{EDITOR_HELP}{PLAIN}\n"))?,
-            Line::Text(t) => {
-                let size: usize = lines.iter().map(|l| l.len() + 1).sum::<usize>() + t.len();
-                if lines.len() >= MESSAGE_LINES || size > MESSAGE_BYTES {
-                    oops(call, "That's as long as a message can be: /s saves it.")?;
-                } else {
-                    lines.push(t);
-                }
-            }
-        }
-    }
-}
-
-fn list(call: &mut Call, lines: &[String]) -> io::Result<()> {
-    for (i, l) in lines.iter().enumerate() {
-        call.say(&format!("{DIM}{:>3}:{PLAIN} {l}\n", i + 1))?;
-    }
-    Ok(())
+    let mut lines = vec![format!("{BOLD}{}{PLAIN} {DIM}now{PLAIN}", printable(handle))];
+    lines.extend(wrap(text, cols.saturating_sub(4)));
+    Preview::Lines(lines)
 }
 
 /// A QR code of `text` in half blocks, two rows of modules to a line of
@@ -285,16 +213,6 @@ mod tests {
         assert_eq!(cut("hello world", 8), "hello w…");
         assert_eq!(pad("hi", 5), "hi   ");
         assert_eq!(pad("浦和", 5), "浦和 ");
-    }
-
-    #[test]
-    fn the_editor_knows_its_commands_on_a_line_of_their_own() {
-        assert_eq!(Line::read("/s"), Line::Save);
-        assert_eq!(Line::read(" /A "), Line::Abort);
-        assert_eq!(Line::read("/l"), Line::List);
-        assert_eq!(Line::read("/d"), Line::TakeBack);
-        assert_eq!(Line::read("/s is how you save"), Line::Text("/s is how you save".into()));
-        assert_eq!(Line::read("  indented  "), Line::Text("  indented".into()));
     }
 
     #[test]

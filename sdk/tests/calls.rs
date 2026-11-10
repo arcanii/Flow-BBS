@@ -242,3 +242,62 @@ async fn a_line_given_up_with_esc_is_none_and_too_long_a_line_stops_at_its_limit
     let said = heard(&mut line, "None").await;
     assert!(said.contains(r#"Some("abcdefgh") None"#), "{said:?}");
 }
+
+/// A board whose caller edits a draft twice, saying what each came to.
+fn edits(call: &mut Call) -> std::io::Result<()> {
+    // Its preview: each line as the board would show it.
+    let seen = |_: &Call, text: &str| flow_bbs::Preview::Lines(text.lines().map(|l| format!("seen: {l}")).collect());
+    let draft = flow_bbs::Draft { hint: "Say something", text: "first line", preview: Some(&seen), ..flow_bbs::Draft::new("A test") };
+    let got = call.edit(&draft)?;
+    call.say(&format!("got {got:?}\n"))?;
+    let got = call.edit(&draft)?;
+    call.say(&format!("then {got:?}\n"))?;
+    Ok(())
+}
+
+/// What the board says up to and including `until`, what came after it
+/// kept in `buf` for the next.
+async fn upto(channel: &mut russh::Channel<client::Msg>, buf: &mut String, until: &str) -> String {
+    let read = async {
+        while !buf.contains(until) {
+            match channel.wait().await {
+                Some(ChannelMsg::Data { data }) => buf.push_str(&String::from_utf8_lossy(&data)),
+                Some(_) => {}
+                None => break,
+            }
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(10), read).await.unwrap_or_else(|_| panic!("waited for {until:?}, heard {buf:?}"));
+    let end = buf.find(until).unwrap() + until.len();
+    buf.drain(..end).collect()
+}
+
+#[tokio::test]
+async fn a_caller_edits_full_screen_saving_with_ctrl_s_and_leaving_without_saving() {
+    let mut line = dial(serving(edits), &[("TERM_PROGRAM", "flow-terminal")]).await;
+    let mut buf = String::new();
+    let said = upto(&mut line, &mut buf, flow_bbs::EDIT_KEYS).await;
+    assert!(said.contains(" A test") && said.contains("Say something") && said.contains(" first line"), "{said:?}");
+    // To the end, a new line (its escape left out), a paste in one piece,
+    // a word back with Ctrl+Left, and saved.
+    line.data(&b"\x1b[F\rsecond\x1b[31m line"[..]).await.unwrap();
+    line.data(&b" and more"[..]).await.unwrap();
+    // Previewed as the board shows it, then back to writing with any key.
+    line.data(&b"\x10"[..]).await.unwrap();
+    let said = upto(&mut line, &mut buf, "goes back to writing").await;
+    assert!(said.contains(" Preview: A test") && said.contains(" seen: first line") && said.contains(" seen: second line and more"), "{said:?}");
+    line.data(&b" "[..]).await.unwrap();
+    let said = upto(&mut line, &mut buf, flow_bbs::EDIT_KEYS).await;
+    assert!(said.contains("\x1b[2J") && said.contains("line 2 of 2"), "drawn whole again, the cursor where it was: {said:?}");
+    line.data(&b"\x1b[1;5D\x13"[..]).await.unwrap();
+    let said = upto(&mut line, &mut buf, "more\")").await;
+    assert!(said.contains(r#"got Some("first line\nsecond line and more")"#), "{said:?}");
+    // Changed, Esc asks; N throws it away.
+    upto(&mut line, &mut buf, flow_bbs::EDIT_KEYS).await;
+    line.data(&b"x\x1b"[..]).await.unwrap();
+    upto(&mut line, &mut buf, "Save it?").await;
+    line.data(&b"n"[..]).await.unwrap();
+    let said = upto(&mut line, &mut buf, "then None").await;
+    assert!(said.contains("\x1b[2J"), "the screen left clear: {said:?}");
+    assert_eq!(ended(&mut line).await, Some(0));
+}

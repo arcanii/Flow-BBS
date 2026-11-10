@@ -12,6 +12,7 @@
 //! | `ANIE_BBS_MINES` | Mines' door, the game room's (`flow-mines`, on the PATH) |
 //! | `ANIE_BBS_DUNGEON` | Dungeon's door, the game room's (`dungeon`, on the PATH) |
 //! | `ANIE_BBS_SAVES` | The folder where members' games are kept between calls (`saves`) |
+//! | `ANIE_BBS_FONTS` | A folder of faces (Noto Serif, Noto Sans, Noto Serif CJK) the bulletin is typeset in for Flow; unset, it's text |
 //! | `ANIE_BBS_NAME` | Its name (`Anie Solutions BBS`) |
 //! | `ANIE_BBS_TIME_ZONE` | The zone its times are shown in (`Asia/Tokyo`) |
 //! | `ANIE_BBS_SYSOP_MAIL` | Where news of an application goes; else to the sysops' own addresses |
@@ -37,6 +38,7 @@ pub struct Settings {
     pub mines: String,
     pub dungeon: String,
     pub saves: PathBuf,
+    pub fonts: Option<PathBuf>,
     pub zone: String,
     pub sysop_mail: Option<String>,
     pub max_calls: usize,
@@ -72,6 +74,7 @@ impl Settings {
             mines: present("ANIE_BBS_MINES").unwrap_or("flow-mines".into()),
             dungeon: present("ANIE_BBS_DUNGEON").unwrap_or("dungeon".into()),
             saves: present("ANIE_BBS_SAVES").unwrap_or("saves".into()).into(),
+            fonts: present("ANIE_BBS_FONTS").map(PathBuf::from),
             zone,
             sysop_mail: present("ANIE_BBS_SYSOP_MAIL"),
             max_calls: number("ANIE_BBS_MAX_CALLS", 64)?,
@@ -115,7 +118,7 @@ mod tests {
         assert!(matches!(mail, Mail::Dev));
         assert_eq!((s.name.as_str(), s.address.as_str(), s.zone.as_str()), ("Anie Solutions BBS", "0.0.0.0:2222", "Asia/Tokyo"));
         assert_eq!((s.max_calls, s.max_calls_per_address), (64, 4));
-        assert!(s.sysop_mail.is_none());
+        assert!(s.sysop_mail.is_none() && s.fonts.is_none(), "no faces: the bulletin is text");
     }
 
     #[test]

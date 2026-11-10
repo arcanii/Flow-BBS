@@ -16,6 +16,7 @@ work's step 2, which this repository is.
 ```bash
 cargo test --workspace                  # unit tests, then calls over real SSH (sdk/tests/calls.rs)
 ANIE_BBS_TEST_DATABASE_URL=postgres://postgres@127.0.0.1:55432/postgres cargo test -p anie-bbs   # the Anie board's calls, on a PostgreSQL
+ANIE_BBS_TEST_FONTS=<a folder of the image's Noto faces> cargo test -p anie-bbs   # the bulletin typeset too (ANIE_BBS_TEST_CARD=<file> keeps a card to look at)
 cargo clippy --workspace --all-targets  # no warnings
 cargo run -p flow-bbsd -- boards/example   # the example board on 0.0.0.0:2222
 ssh -p 2222 guest@localhost             # call it
@@ -46,8 +47,9 @@ ssh -p 2222 guest@localhost             # call it
 - `sdk/src/call.rs`: `Call`, and finding out who's calling (Flow's
   variables, else XTVERSION with DA1 after it, keys typed meanwhile kept).
   `say` turns each newline into CR LF: the call has no pty of its own.
-- `sdk/src/key.rs`: keys from the caller's bytes, a cut-off ESC waiting
-  50 ms for the rest of a sequence.
+- `sdk/src/key.rs`: keys from the caller's bytes (the arrows, Home, End,
+  Delete, Page Up and Down as xterm, the Linux console and VT220s send
+  them), a cut-off ESC waiting 50 ms for the rest of a sequence.
 - `sdk/src/screen.rs`: `Screen`, its marks (`{user}`, the sixteen colors,
   `{sound …}`, `{fx …}`), its picture and model lines (`{rows N}` after
   one; a file of the board's folder, or one the board made, by name, for
@@ -82,6 +84,17 @@ ssh -p 2222 guest@localhost             # call it
   mouse through crossterm, effects and sounds through `send_effects`.
 - `sdk/src/input.rs`: `Call::ask` and `Call::ask_secret` (a typed line,
   printable letters only), and `printable` for what another caller wrote.
+- `sdk/src/edit.rs`: `Call::edit`, a full-screen editor for a `Draft` (a
+  title, a hint, the text to start from, its limits): words wrapped to the
+  window, the arrows, Home/End, the page keys and Ctrl+arrows by words,
+  Ctrl+K cutting lines and Ctrl+U pasting them (as nano), Ctrl+Z and
+  Ctrl+Y, Ctrl+P (or F2) previewing, Ctrl+S saving and Esc leaving
+  (asking where it changed); `EDIT_KEYS` says the keys along the bottom.
+  A preview is the board's (`Draft::preview`, a `Previewer` giving a
+  `Preview`: lines it scrolls, or a `Screen` and lines under it), else
+  the text wrapped to the window; any key but the scrolling ones goes
+  back. `Text` is the text and the cursor, pure; `Editor` draws only the
+  rows that changed, and nothing while keys wait.
   `server.rs` also turns away connections past `max_calls` (and per
   address) before they log in, and gives each `Call` its `address`.
 - `boards/anie`: `anie-bbs`, the Anie Solutions BBS, a board in code on
@@ -102,9 +115,18 @@ ssh -p 2222 guest@localhost             # call it
   show, made in code and named `made/…` in their screens: `glb.rs`, a
   writer of smooth surfaces, materials, point lights and a looped
   animation; `teapot.rs`, GLUT's patches of Newell's teapot;
-  `hypercube.rs`; `lamps.rs`), `crypto.rs`
+  `hypercube.rs`; `lamps.rs`), `typeset.rs` (the bulletin typeset for
+  Flow with cosmic-text on a card like `type.svg`'s page, its lines' marks
+  `# `, `## `, `- `; the faces from `ANIE_BBS_FONTS`, which the image's
+  `fonts` stage copies from Debian's Noto packages with their notices; a
+  card a whole number of rows tall at twice the cells' pixels; text for
+  other terminals, or where there are no faces or room), `crypto.rs`
   (United One's rules for codes), `mail.rs` (Gmail by SMTP), `db.rs`
-  (migrations in `migrations/`, errors logged by SQLSTATE only). What a
+  (migrations in `migrations/`, errors logged by SQLSTATE only). Posts,
+  bug reports, comments and the bulletin are written in the SDK's
+  editor (`ui::editor`), each previewed as its page shows it (a post or a
+  comment under its author, `ui::as_posted`; the bulletin by
+  `session::bulletin_page`, typeset where it can be). What a
   caller is told never says which part of a login was wrong, or whether
   an address is a member's. `deploy/`: its Dockerfile, compose file, and
   the signed scripts that run it on tkaniedev03 (`deploy/README.md`).

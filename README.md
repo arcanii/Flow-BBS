@@ -46,8 +46,9 @@ A board in code has what `flow-bbsd` is made of: `Screen::read` and
 `call.show` for screens, `call.menu` for a menu of `Item`s, `call.door`
 for a `Door`, and `call.pause`; and for a board of its own drawing,
 `call.clear`, `call.ask` and `call.ask_secret` for a line typed (only
-printable letters kept), `printable` for showing what someone else
-typed, and `call.address` for where the caller is. What Flow draws comes from Flow's SDK
+printable letters kept), `call.edit` for a message written full-screen,
+`printable` for showing what someone else typed, and `call.address` for
+where the caller is. What Flow draws comes from Flow's SDK
 ([arcanii/Flow-SDK](https://github.com/arcanii/Flow-SDK)), re-exported as
 `flow_bbs::flow`: its pictures, models, effects and sounds are escape
 sequences, which `call.send` writes down the call.
@@ -135,6 +136,20 @@ them and Enter takes the one it's on, or an item's key takes it at once.
 The frame is in the sixteen colors and the bar is the caller's theme
 swapped, so both follow the caller's theme.
 
+### Writing
+
+`Call::edit` lets a caller write full-screen: a `Draft` gives it a title,
+a line saying what to write, the text to start from, and how long it may
+grow, and how the board shows it to its readers. The words wrap to the
+window as they're typed. The arrows, Home and End, Page Up and Page
+Down, and Ctrl with the arrows (a word at a time) move about; Ctrl+K cuts
+a line and Ctrl+U pastes what was cut; Ctrl+Z undoes and Ctrl+Y redoes;
+Ctrl+P (or F2) previews it as its readers will see it (lines the board
+gives, or a screen, a picture and all; else the text wrapped to the
+window), and any key goes back to writing; Ctrl+S saves, and Esc leaves,
+asking first whether to save what changed. Only printable letters are
+kept, and only the rows that changed are drawn again.
+
 ### Doors
 
 A door is any program on the server's PATH, in any language. It runs on
@@ -197,6 +212,12 @@ recovery codes. The sysop decides each application from the board's sysop
 menu. A member logs in with handle, password and the app's code; staff
 moderate the forums and triage bugs; the sysop also manages members and
 roles, forums, the tracker's products, the bulletin, and reads the log.
+Posts, bug reports and the bulletin are written in the SDK's full-screen
+editor, each previewed (Ctrl+P) as its readers will see it. In Flow the
+bulletin is typeset, as the demonstrations' page of
+type is: Noto Serif (Noto Serif CJK for Japanese, Chinese and Korean) on
+a card of cream paper, its lines starting `# ` headlines, `## ` subheads
+and `- ` points; other terminals get it as text.
 Guests and members alike have its game room (experimental): Mines
 (`flow-mines`, from Flow-Games), each member's best time on each size kept
 for a leaderboard they share; Dungeon, the mainframe original of Zork
@@ -236,4 +257,7 @@ Rust 1.95 or later.
 
 MIT or Apache-2.0, at your choice (`LICENSE-MIT`, `LICENSE-APACHE`),
 but for Neko's sprites in `doors/cat/sprites/`, which are carried under
-their own terms (`doors/cat/sprites/NOTICE.md`).
+their own terms (`doors/cat/sprites/NOTICE.md`). The Anie board's image
+carries Noto faces from Debian's packages, under the SIL Open Font
+License, with Debian's notices of their terms
+(`/usr/share/doc/anie-bbs-fonts`).

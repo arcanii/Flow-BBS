@@ -34,7 +34,7 @@ opens no seed.
 | 1 | `01-inspect.sh` | Read-only: what's on the box |
 | 2 | `02-clone.sh` | The clone, at the pinned commit |
 | 3 | `03-secrets.sh` | `bbs.env` made (never over one that's there); `smtp.env`'s template |
-| 4 | `04-build.sh` | The board's image built, PostgreSQL's pulled |
+| 4 | `04-build.sh` | The board's image built (with Dungeon from devshane/zork, and the bulletin's Noto faces, about 55 MB, from Debian's packages), PostgreSQL's pulled |
 | — | Bryan, by hand | The Gmail app password into `smtp.env` (below) |
 | 5 | `05-check-mail.sh` | Read-only: `smtp.env` in shape, and Gmail lets the board log in |
 | 6 | `06-start.sh` | Both up; waits for SSH on 2222; prints the host key's fingerprint |

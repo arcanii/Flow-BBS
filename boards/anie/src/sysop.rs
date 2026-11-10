@@ -8,7 +8,7 @@
 
 use std::io;
 
-use flow_bbs::{printable, Item};
+use flow_bbs::{printable, Call, Item, Preview};
 
 use crate::db::{Db, Role};
 use crate::forums::{pick, Pick};
@@ -348,8 +348,14 @@ impl Session<'_> {
     /// The bulletin members see after logging in.
     fn edit_bulletin(&mut self) -> io::Result<()> {
         let now: String = self.db.query_opt("SELECT value FROM settings WHERE key = 'bulletin'", &[]).db()?.map(|r| r.get(0)).unwrap_or_default();
-        ui::heading(self.call, "The bulletin")?;
-        if let Some(text) = ui::editor(self.call, &now)? {
+        let hint = "Typeset in Flow: # starts a headline, ## a subhead, - a point";
+        // As members will see it: typeset in Flow, where it can be, else text.
+        let bbs = self.bbs;
+        let seen = |call: &Call, text: &str| match crate::session::bulletin_page(bbs, call, text, 2) {
+            Some(page) => Preview::Screen(page, Vec::new()),
+            None => Preview::Lines(crate::typeset::text(text, ui::window(call).0.saturating_sub(4))),
+        };
+        if let Some(text) = ui::editor(self.call, "The bulletin", hint, &now, Some(&seen))? {
             self.db.execute("INSERT INTO settings (key, value) VALUES ('bulletin', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", &[&text]).db()?;
             self.audit(None, "bulletin changed", "")?;
         }

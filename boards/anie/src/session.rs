@@ -5,12 +5,32 @@
 use std::io;
 use std::net::IpAddr;
 
-use flow_bbs::{printable, Call, Item};
+use flow_bbs::{printable, Call, Item, Screen};
 use postgres::Client;
 
 use crate::db::{self, Db, Role};
+use crate::typeset;
 use crate::ui::{self, BOLD, DIM, PLAIN};
 use crate::Bbs;
+
+/// The bulletin's card's running title, as the page of type's, and the
+/// name its picture goes by.
+const KICKER: &str = "THE ÁNIË SOLUTIONS BBS · BULLETIN";
+const CARD: &str = "made/bulletin.png";
+
+/// The bulletin's page for a caller in Flow: its heading, as the board's
+/// other pages have, and `bulletin` typeset on its card under it, `below`
+/// rows left under the card. `None` where the caller isn't in Flow, the
+/// board has no faces, or the window has no room for it: the text, then.
+pub(crate) fn bulletin_page(bbs: &Bbs, call: &Call, bulletin: &str, below: u16) -> Option<Screen> {
+    let faces = bbs.typeset.as_ref().filter(|_| call.is_flow())?;
+    let (cols, rows) = ui::window(call);
+    let cell = call.size().cell().filter(|&(w, h)| w > 0 && h > 0).unwrap_or((10, 20));
+    let card = faces.card(bulletin, KICKER, cols as u16, cell, (rows as u16).saturating_sub(below + 2))?;
+    let rule = "─".repeat(cols.saturating_sub(2).min(76));
+    let shown = format!(" {{bold}}{{cyan}}The bulletin{{/}}\n {{dim}}{rule}{{/}}\n![The bulletin]({CARD}){{rows {}}}", card.rows);
+    Screen::parse_with(&shown, &bbs.settings.screens, &[(CARD, &card.png)]).ok()
+}
 
 /// A call on the board.
 pub struct Session<'a> {
@@ -208,19 +228,31 @@ impl Session<'_> {
             .db()?
             .get::<_, i64>(0);
         let mine = self.db.query_one("SELECT count(*) FROM bugs WHERE assignee_id = $1 AND status IN ('new', 'confirmed', 'in-progress')", &[&me.id]).db()?.get::<_, i64>(0);
-        let (cols, _) = ui::window(self.call);
-        let mut lines = ui::wrap(&bulletin, cols.saturating_sub(4));
-        lines.push(String::new());
-        lines.push(format!("{BOLD}{new}{PLAIN} thread{} with posts you haven't read.", if new == 1 { "" } else { "s" }));
+        let mut news = vec![format!("{BOLD}{new}{PLAIN} thread{} with posts you haven't read.", if new == 1 { "" } else { "s" })];
         if mine > 0 {
-            lines.push(format!("{BOLD}{mine}{PLAIN} open bug{} assigned to you.", if mine == 1 { "" } else { "s" }));
+            news.push(format!("{BOLD}{mine}{PLAIN} open bug{} assigned to you.", if mine == 1 { "" } else { "s" }));
         }
         if self.is(Role::Sysop) {
             let waiting = self.db.query_one("SELECT count(*) FROM members WHERE status = 'pending'", &[]).db()?.get::<_, i64>(0);
             if waiting > 0 {
-                lines.push(format!("{BOLD}{waiting}{PLAIN} application{} waiting for you in the sysop menu.", if waiting == 1 { "" } else { "s" }));
+                news.push(format!("{BOLD}{waiting}{PLAIN} application{} waiting for you in the sysop menu.", if waiting == 1 { "" } else { "s" }));
             }
         }
+        // In Flow, typeset, the news under it, where it fits.
+        let below = news.len() as u16 + 3;
+        if let Some(screen) = bulletin_page(self.bbs, self.call, &bulletin, below) {
+            self.call.show_leaving(&screen, &[], below)?;
+            for line in &news {
+                self.call.say(&format!("\n {line}"))?;
+            }
+            self.call.say("\n")?;
+            self.pause()?;
+            return Ok(());
+        }
+        let (cols, _) = ui::window(self.call);
+        let mut lines = typeset::text(&bulletin, cols.saturating_sub(4));
+        lines.push(String::new());
+        lines.extend(news);
         if ui::page(self.call, "The bulletin", &lines)? {
             self.pause()?;
         }

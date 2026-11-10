@@ -8,7 +8,9 @@
 //! recovery code, once each). Roles go member < staff < sysop: staff
 //! moderate the forums and triage bugs; the sysop runs the board from its
 //! sysop menu (applications, members and their roles, forums, products,
-//! the bulletin, the log). Guests and members alike have the game room
+//! the bulletin, the log). Posts, bug reports and the bulletin are written
+//! in the SDK's full-screen editor, and in Flow the bulletin is typeset
+//! (`typeset`). Guests and members alike have the game room
 //! (experimental): Mines (the door `flow-mines`), its members' best times
 //! a leaderboard they share, and Neko (the door `flow-cat`); and the
 //! demonstrations of what Flow draws: a gallery, Newell's teapot, a
@@ -28,6 +30,7 @@ mod models;
 mod session;
 mod sysop;
 mod tracker;
+pub mod typeset;
 
 use std::collections::{BTreeMap, HashMap};
 use std::io;
@@ -48,6 +51,8 @@ pub struct Bbs {
     pub screens: Screens,
     /// Neko's door, for the game room.
     pub neko: Door,
+    /// The faces the bulletin is typeset in for Flow, where it has them.
+    pub typeset: Option<typeset::Typesetter>,
     /// Who's on now, by call.
     pub online: Mutex<BTreeMap<u64, Online>>,
     /// What's been tried from where, lately.
@@ -148,7 +153,14 @@ impl Bbs {
     pub fn new(settings: Settings, mailer: Box<dyn Mailer>) -> io::Result<Bbs> {
         let screens = Screens::read(&settings.screens)?;
         let neko = Door::new(settings.neko.clone(), Vec::<String>::new());
-        Ok(Bbs { settings, mailer, screens, neko, online: Mutex::default(), guard: Mutex::default(), next_call: AtomicU64::new(1) })
+        let typeset = settings.fonts.as_deref().and_then(|folder| {
+            let faces = typeset::Typesetter::load(folder);
+            if faces.is_none() {
+                eprintln!("anie-bbs: no Noto Serif in {}: the bulletin is text", folder.display());
+            }
+            faces
+        });
+        Ok(Bbs { settings, mailer, screens, neko, typeset, online: Mutex::default(), guard: Mutex::default(), next_call: AtomicU64::new(1) })
     }
 
     /// The SDK's settings for serving it.

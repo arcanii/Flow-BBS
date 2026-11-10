@@ -6,7 +6,7 @@
 
 use std::io;
 
-use flow_bbs::printable;
+use flow_bbs::{printable, Call, Preview};
 
 use crate::db::{Db, Role};
 use crate::forums::{pick, Pick};
@@ -148,9 +148,16 @@ impl Session<'_> {
         };
         let sev = self.choose(" How bad is it? ", &SEVERITIES, "normal")?;
         let Some(sev) = sev else { return Ok(()) };
-        self.call.say(&format!("\n {BOLD}What happens{PLAIN}: what you did, what you expected, and what happened instead.\n"))?;
-        let Some(description) = ui::editor(self.call, "")? else { return Ok(()) };
         let me = self.me().clone();
+        // As the bug's page shows it: who filed it, then what happens.
+        let seen = |call: &Call, text: &str| {
+            let (cols, _) = ui::window(call);
+            let mut lines = vec![format!("{DIM}Filed{PLAIN}    now by {}", printable(&me.handle)), String::new()];
+            lines.extend(ui::wrap(text, cols.saturating_sub(4)));
+            Preview::Lines(lines)
+        };
+        let hint = "What happens: what you did, what you expected, and what happened instead.";
+        let Some(description) = ui::editor(self.call, &format!("Bug: {title}"), hint, "", Some(&seen))? else { return Ok(()) };
         let id: i64 = self
             .db
             .query_one("INSERT INTO bugs (product_id, title, description, severity, reporter_id) VALUES ($1, $2, $3, $4, $5) RETURNING id", &[&product, &title, &description, &sev, &me.id])
@@ -239,7 +246,8 @@ impl Session<'_> {
             let change = match pick(&typed) {
                 Pick::Letter('q') => return Ok(()),
                 Pick::Letter('c') => {
-                    if let Some(body) = ui::editor(self.call, "")? {
+                    let seen = |call: &Call, text: &str| ui::as_posted(call, &me.handle, text);
+                    if let Some(body) = ui::editor(self.call, &format!("A comment on bug #{id}"), "", "", Some(&seen))? {
                         self.db.execute("INSERT INTO bug_comments (bug_id, author_id, body) VALUES ($1, $2, $3)", &[&id, &me.id, &body]).db()?;
                         self.db.execute("UPDATE bugs SET updated_at = now() WHERE id = $1", &[&id]).db()?;
                     }

@@ -15,7 +15,7 @@ use anie_bbs::crypto::{self, Keys};
 use anie_bbs::mail::Memory;
 use anie_bbs::settings::Settings;
 use anie_bbs::{db, Bbs};
-use flow_bbs::MENU_KEYS;
+use flow_bbs::{EDIT_KEYS, MENU_KEYS};
 use postgres::{Client, NoTls};
 use russh::client;
 use russh::keys::PublicKeyOrCertificate;
@@ -73,6 +73,8 @@ impl Board {
             ("ANIE_BBS_MINES", mines),
             ("ANIE_BBS_DUNGEON", dungeon),
             ("ANIE_BBS_SAVES", dir.join("saves").display().to_string()),
+            // Faces to typeset the bulletin in, where the test's machine has them.
+            ("ANIE_BBS_FONTS", std::env::var("ANIE_BBS_TEST_FONTS").unwrap_or_default()),
         ];
         let (settings, _) = Settings::from_lookup(|k| env.iter().find(|(n, _)| *n == k).map(|(_, v)| v.clone())).unwrap();
         let mail = Arc::new(Memory::default());
@@ -390,8 +392,13 @@ async fn an_applicant_is_let_in_by_the_sysop_then_posts_and_files_a_bug_that_sta
     bryan.answer(" Number to read, Q to go back: ", "2").await;
     bryan.answer("Q to go back: ", "n").await;
     bryan.answer(" Title: ", "Hello, board").await;
-    bryan.answer("  1:", "First post! Welcome, everyone.").await;
-    bryan.answer("  2:", "/s").await;
+    bryan.until(EDIT_KEYS).await;
+    bryan.send("First post! Welcome, everyone.\x10").await;
+    let said = bryan.until("goes back to writing").await;
+    assert!(plain(&said).contains("bryan now") && said.contains(" First post! Welcome, everyone."), "previewed as the thread shows a post: {said:?}");
+    bryan.send(" ").await;
+    bryan.until(EDIT_KEYS).await;
+    bryan.send("\x13").await;
     assert!(bryan.go_on().await.contains("Posted."));
     bryan.answer("Q to go back: ", "q").await;
     bryan.answer(" Number to read, Q to go back: ", "q").await;
@@ -408,8 +415,8 @@ async fn an_applicant_is_let_in_by_the_sysop_then_posts_and_files_a_bug_that_sta
     alice.answer("Q to go back: ", "1").await;
     let said = alice.answer("Q to go back: ", "r").await;
     assert!(said.contains("First post! Welcome, everyone.") && said.contains("bryan"), "{said:?}");
-    alice.answer("  1:", "Hi bryan\x1b[2J!").await;
-    alice.answer("  2:", "/s").await;
+    alice.until(EDIT_KEYS).await;
+    alice.send("Hi bryan\x1b[2J!\x13").await;
     let said = alice.answer("Q to go back: ", "").await;
     assert!(said.contains("Hi bryan!"), "the reply, its escape left out: {said:?}");
     alice.answer("Q to go back: ", "q").await;
@@ -423,8 +430,8 @@ async fn an_applicant_is_let_in_by_the_sysop_then_posts_and_files_a_bug_that_sta
     alice.answer(" Which product (its number)? ", "1").await;
     alice.answer(" In a line, what's wrong? ", "The welcome screen takes a while").await;
     alice.answer(" How bad is it? (normal) ", "").await;
-    alice.answer("  1:", "I call, and wait.").await;
-    alice.answer("  2:", "/s").await;
+    alice.until(EDIT_KEYS).await;
+    alice.send("I call, and wait.\x13").await;
     assert!(alice.go_on().await.contains("Filed as bug #1"));
 
     // The sysop (staff, and more) confirms it, and she's mailed.
@@ -761,4 +768,61 @@ async fn flows_answer_coming_after_windows_console_has_answered_for_it_picks_not
     let said = caller.until("Goodbye.").await;
     assert!(!said.contains("Forgot your password") && !said.contains("Handle:"), "the answer picked nothing: {said:?}");
     assert!(plain(&said).contains("▸ Q  Hang up"), "the first key was the caller's own: {said:?}");
+}
+
+#[tokio::test]
+async fn the_sysop_writes_the_bulletin_full_screen_and_flow_sees_it_typeset_and_others_as_text() {
+    let Some(board) = Board::new("bulletin") else { return };
+    let typeset = std::env::var_os("ANIE_BBS_TEST_FONTS").is_some();
+    let (seed_s, seed_t) = (crypto::new_seed(), crypto::new_seed());
+    board.member("sam", "sam's long password", &seed_s, "sysop");
+    board.member("tia", "tia's long password", &seed_t, "member");
+    let (mut step_s, mut step_t) = (crypto::step_now().saturating_sub(1), crypto::step_now().saturating_sub(1));
+
+    // The sysop finds the bulletin there to change, cuts its line, writes
+    // a headline and a point, and saves.
+    let mut sam = Caller::dial(&board).await;
+    sam.log_in("sam", "sam's long password", &next_code(&seed_s, &mut step_s).await).await;
+    sam.send("s").await;
+    sam.until(MENU_KEYS).await;
+    sam.send("n").await;
+    let said = sam.until(EDIT_KEYS).await;
+    assert!(said.contains("The bulletin") && said.contains("Welcome to the Anie Solutions BBS"), "{said:?}");
+    sam.send("\x0b# Hello, \"board\"\r- Dungeon is open").await;
+    // Previewed as members will see it: in Flow, typeset (where the test
+    // has faces to set it in), else as text.
+    sam.send("\x10").await;
+    let said = sam.until("goes back to writing").await;
+    if typeset {
+        assert!(said.contains("\x1b_Ga=T") && plain(&said).contains("The bulletin"), "the card: {:?}", plain(&said));
+    } else {
+        assert!(said.contains("Preview: The bulletin") && said.contains("\x1b[1;36mHello, \"board\"") && said.contains("• Dungeon is open"), "{said:?}");
+    }
+    sam.send(" ").await;
+    sam.until(EDIT_KEYS).await;
+    sam.send("\x13").await;
+    sam.until(MENU_KEYS).await;
+    let saved: String = board.sql(|db| db.query_one("SELECT value FROM settings WHERE key = 'bulletin'", &[]).unwrap().get(0));
+    assert_eq!(saved, "# Hello, \"board\"\n- Dungeon is open");
+
+    // In Flow, it's typeset (where the test has faces to set it in), the
+    // news under it as text.
+    sam.send("b").await;
+    sam.until(MENU_KEYS).await;
+    sam.send("n").await;
+    let said = sam.go_on().await;
+    assert!(plain(&said).contains("0 threads with posts you haven't read"), "{said:?}");
+    if typeset {
+        assert!(said.contains("\x1b_Ga=T") && !said.contains("Dungeon is open"), "a picture: {:?}", plain(&said));
+    } else {
+        assert!(said.contains("Hello, \"board\"") && said.contains("• Dungeon is open"), "{said:?}");
+    }
+
+    // Another terminal gets it as text: the headline in the heading's
+    // color, the point after a bullet.
+    let mut tia = Caller::line(&board, &[]).await;
+    tia.until(MENU_KEYS).await;
+    let said = tia.log_in("tia", "tia's long password", &next_code(&seed_t, &mut step_t).await).await;
+    assert!(said.contains("\x1b[1;36mHello, \"board\"\x1b[0m") && said.contains("• Dungeon is open"), "{said:?}");
+    assert!(!said.contains("\x1b_G"), "no picture: {said:?}");
 }

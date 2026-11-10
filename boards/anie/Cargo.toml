@@ -23,6 +23,12 @@ qrcodegen = "1.8"
 unicode-width = "0.2"
 # Mines' best times, as it keeps them.
 serde_json = "1"
+# The bulletin, typeset for Flow: shaped (kerning, ligatures), broken into
+# lines (Japanese and Chinese too) and drawn, all in Rust; without
+# fontconfig, as the board reads its faces from a folder of its own.
+cosmic-text = { version = "0.19", default-features = false, features = ["std", "swash"] }
+unicode-script = "0.5"
+png = "0.18"
 # Mail over rustls with ring, as russh is, so it builds without aws-lc's toolchain.
 lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "hostname", "rustls-tls"] }
 

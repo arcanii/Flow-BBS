@@ -70,7 +70,7 @@ fn erase(c: char) -> String {
 
 /// Whether a typed letter is kept: printable, and not one of the marks that
 /// turn text around (which can make a line read as something it isn't).
-fn keeps(c: char) -> bool {
+pub(crate) fn keeps(c: char) -> bool {
     !c.is_control() && !matches!(c, '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
 }
 

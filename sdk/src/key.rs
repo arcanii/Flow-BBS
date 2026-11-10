@@ -1,10 +1,11 @@
 //! The keys a caller presses, read from the bytes their terminal sends down
 //! the call: letters as they're typed (UTF-8), Enter, Backspace, Tab, Esc,
-//! the arrows, and Ctrl with a letter. Anything else comes whole as
-//! `Other`, so a board can still read what it knows: a CSI or SS3 to its
-//! final byte, and a terminal's answer as a string (OSC, DCS, APC, PM, SOS)
-//! to its end, so the letters in `ESC P >|Flow 0.1.35 ESC \` are never
-//! taken for keys.
+//! the arrows, Home, End, Delete, Page Up and Page Down (as xterm, the
+//! Linux console and VT220s send them), and Ctrl with a letter. Anything
+//! else comes whole as `Other`, so a board can still read what it knows: a
+//! CSI or SS3 to its final byte, and a terminal's answer as a string (OSC,
+//! DCS, APC, PM, SOS) to its end, so the letters in `ESC P >|Flow 0.1.35
+//! ESC \` are never taken for keys.
 
 /// A key the caller pressed, or a change in their window.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,6 +25,13 @@ pub enum Key {
     Down,
     Left,
     Right,
+    /// Home and End, Delete (the one that takes the letter after the
+    /// cursor), Page Up and Page Down.
+    Home,
+    End,
+    Delete,
+    PageUp,
+    PageDown,
     /// Ctrl with a letter, the letter lowercase: `Ctrl('c')`.
     Ctrl(char),
     /// The caller's window changed size: a board that draws to the size
@@ -75,6 +83,11 @@ fn escape(bytes: &[u8]) -> Read {
                 (b"" | b"1", b'B') => Key::Down,
                 (b"" | b"1", b'C') => Key::Right,
                 (b"" | b"1", b'D') => Key::Left,
+                (b"" | b"1", b'H') | (b"1" | b"7", b'~') => Key::Home,
+                (b"" | b"1", b'F') | (b"4" | b"8", b'~') => Key::End,
+                (b"3", b'~') => Key::Delete,
+                (b"5", b'~') => Key::PageUp,
+                (b"6", b'~') => Key::PageDown,
                 _ => Key::Other(bytes[..n].to_vec()),
             };
             Read::Key(k, n)
@@ -85,6 +98,8 @@ fn escape(bytes: &[u8]) -> Read {
             Some(b'B') => Read::Key(Key::Down, 3),
             Some(b'C') => Read::Key(Key::Right, 3),
             Some(b'D') => Read::Key(Key::Left, 3),
+            Some(b'H') => Read::Key(Key::Home, 3),
+            Some(b'F') => Read::Key(Key::End, 3),
             Some(_) => Read::Key(Key::Other(bytes[..3].to_vec()), 3),
         },
         Some(b']') => string(bytes, true),
@@ -172,8 +187,15 @@ mod tests {
     #[test]
     fn arrows_come_as_csi_or_ss3_and_other_sequences_whole() {
         assert_eq!(keys(b"\x1b[A\x1b[B\x1bOC\x1b[1D"), [Key::Up, Key::Down, Key::Right, Key::Left]);
-        assert_eq!(keys(b"\x1b[5~\x1b[1;5A"), [Key::Other(b"\x1b[5~".to_vec()), Key::Other(b"\x1b[1;5A".to_vec())]);
+        assert_eq!(keys(b"\x1b[2~\x1b[1;5A"), [Key::Other(b"\x1b[2~".to_vec()), Key::Other(b"\x1b[1;5A".to_vec())], "Insert, Ctrl+Up");
         assert_eq!(keys(b"\x1bx"), [Key::Other(b"\x1bx".to_vec())], "Alt with a letter");
+    }
+
+    #[test]
+    fn home_end_delete_and_the_page_keys_come_as_each_terminal_sends_them() {
+        assert_eq!(keys(b"\x1b[H\x1bOH\x1b[1~\x1b[7~"), [Key::Home, Key::Home, Key::Home, Key::Home]);
+        assert_eq!(keys(b"\x1b[F\x1bOF\x1b[4~\x1b[8~"), [Key::End, Key::End, Key::End, Key::End]);
+        assert_eq!(keys(b"\x1b[3~\x1b[5~\x1b[6~"), [Key::Delete, Key::PageUp, Key::PageDown]);
     }
 
     #[test]
