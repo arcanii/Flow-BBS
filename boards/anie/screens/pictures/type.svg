@@ -5,10 +5,13 @@
 
     inkscape type.svg -w 1600 -o type.png
 
-  then cut to 64 colors. Its faces are free (the SIL Open Font License):
+  then cut to 64 colors. It's 1008 pixels tall, 56 to each of the 18 rows
+  it's shown over (and a whole number for 16, 14, 12 or 9): Flow on
+  Windows draws a picture a row at a time, and rows of unequal pixels are
+  drawn a little apart. Its faces are free (the SIL Open Font License):
   Noto Serif JP and TC, Noto Sans JP, and Cascadia Code.
 -->
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1008" viewBox="0 0 1600 1008">
   <defs>
     <style>
       .serif { font-family: 'Noto Serif JP'; fill: #1f1c18; }
@@ -18,7 +21,7 @@
       .soft { fill: #6b6157; }
     </style>
   </defs>
-  <rect x="8" y="8" width="1584" height="984" rx="30" fill="#f5f0e6" stroke="#d8cdb9" stroke-width="3"/>
+  <rect x="8" y="8" width="1584" height="992" rx="30" fill="#f5f0e6" stroke="#d8cdb9" stroke-width="3"/>
 
   <!-- The head: a running title, tracked out, over a rule. -->
   <text x="80" y="104" class="sans red" font-size="25" font-weight="600" letter-spacing="7">THE ÁNIË SOLUTIONS BBS · A PAGE OF TYPE</text>

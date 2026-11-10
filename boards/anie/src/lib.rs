@@ -211,4 +211,30 @@ mod tests {
         assert_eq!((g.failures(a), g.failures(b)), (3, 0));
         assert_eq!((g.applications(a), g.applications(b)), (0, 1));
     }
+
+    /// Flow on Windows (through dial) draws a picture a row of cells at a
+    /// time, each row a strip of its pixels fitted to its row, so rows of
+    /// unequal pixels are drawn a little apart: each picture says its rows,
+    /// and its height is a whole number of pixels to each.
+    #[test]
+    fn every_picture_on_the_screens_says_its_rows_and_divides_into_them() {
+        let folder = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("screens");
+        let mut seen = 0;
+        for entry in std::fs::read_dir(&folder).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_none_or(|e| e != "txt") {
+                continue;
+            }
+            for line in std::fs::read_to_string(&path).unwrap().lines() {
+                let Some(at) = line.find(".png)") else { continue };
+                let file = &line[line[..at].rfind("](").unwrap() + 2..at + 4];
+                let rows: u32 = line[at..].split("{rows ").nth(1).and_then(|r| r.split('}').next()).and_then(|r| r.trim().parse().ok()).unwrap_or_else(|| panic!("{}: {file} says no rows", path.display()));
+                let png = std::fs::read(folder.join(file)).unwrap();
+                let height = u32::from_be_bytes(png[20..24].try_into().unwrap());
+                assert_eq!(height % rows, 0, "{}: {file} is {height} pixels over {rows} rows", path.display());
+                seen += 1;
+            }
+        }
+        assert!(seen >= 4, "the welcome's, the main menu's, the gallery's and the type page's: {seen}");
+    }
 }

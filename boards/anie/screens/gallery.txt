@@ -1,7 +1,7 @@
 {bold}{bright-cyan}The gallery{/}{fx burst}{sound chime}
 {dim}What Flow draws for a board: a picture, a model that turns, an effect and a sound.{/}
 
-![Flow BBS, a picture](pictures/flow.png)
+![Flow BBS, a picture](pictures/flow.png){rows 8}
 
 ![A turning crystal](pictures/crystal.obj)
 
