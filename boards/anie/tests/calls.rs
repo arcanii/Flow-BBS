@@ -29,6 +29,9 @@ fn blocking<T: Send>(f: impl FnOnce() -> T + Send) -> T {
 
 const KEY: &str = "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e";
 
+/// The login's password prompt, the same for everyone.
+const PASSWORD: &str = " Password (Enter alone to log in by code): ";
+
 /// A board of the test's own: where to call it, its database, its mail.
 struct Board {
     address: SocketAddr,
@@ -270,7 +273,7 @@ impl Caller {
     async fn log_in(&mut self, handle: &str, password: &str, code: &str) -> String {
         self.send("l").await;
         self.answer(" Handle: ", handle).await;
-        self.answer(" Password: ", password).await;
+        self.answer(PASSWORD, password).await;
         self.answer("(or a recovery code): ", code).await;
         let said = self.go_on().await;
         self.until(MENU_KEYS).await;
@@ -460,7 +463,7 @@ impl Caller {
     async fn log_in_refused(&mut self, handle: &str, password: &str, code: &str) -> String {
         self.send("l").await;
         self.answer(" Handle: ", handle).await;
-        self.answer(" Password: ", password).await;
+        self.answer(PASSWORD, password).await;
         self.answer("(or a recovery code): ", code).await;
         let said = self.go_on().await;
         self.until(MENU_KEYS).await;
@@ -471,7 +474,7 @@ impl Caller {
     async fn log_in_with_recovery(&mut self, handle: &str, password: &str, code: &str) -> String {
         self.send("l").await;
         self.answer(" Handle: ", handle).await;
-        self.answer(" Password: ", password).await;
+        self.answer(PASSWORD, password).await;
         self.answer("(or a recovery code): ", code).await;
         let said = self.go_on().await;
         assert!(said.contains("You used a recovery code; 7 are left."), "{said:?}");
@@ -511,6 +514,79 @@ async fn a_login_wrong_in_any_part_says_the_same_a_code_is_good_once_and_five_wr
     assert!(said.contains(wrong), "right, but waiting out five wrong in a row: {said:?}");
     let locked: bool = board.sql(|db| db.query_one("SELECT locked_until > now() FROM members WHERE handle = 'carol'", &[]).unwrap().get(0));
     assert!(locked);
+}
+
+#[tokio::test]
+async fn a_member_who_chooses_it_logs_in_by_code_alone_and_a_days_wrong_tries_make_the_handle_take_a_mailed_code_too() {
+    let Some(board) = Board::new("code_only") else { return };
+    let seed = crypto::new_seed();
+    board.member("frank", "frank's good password", &seed, "member");
+    let mut last = crypto::step_now().saturating_sub(2);
+    let wrong = "That handle, password or code isn't right.";
+
+    // Not chosen yet, the code alone won't do.
+    let mut frank = Caller::dial(&board).await;
+    let said = frank.log_in_refused("frank", "", &next_code(&seed, &mut last).await).await;
+    assert!(said.contains(wrong), "the code alone, not chosen: {said:?}");
+
+    // He chooses it in his profile, with his password and a code, and he's
+    // mailed to say so.
+    frank.log_in("frank", "frank's good password", &next_code(&seed, &mut last).await).await;
+    frank.send("p").await;
+    let said = frank.answer("  Your choice: ", "c").await;
+    assert!(plain(&said).contains("[c] Log in by your authenticator's code alone"), "{said:?}");
+    frank.answer(" Your password: ", "frank's good password").await;
+    frank.answer("(or a recovery code): ", &next_code(&seed, &mut last).await).await;
+    assert!(frank.go_on().await.contains("You log in by your authenticator's code alone now"));
+    assert_eq!(board.last_mail("frank@example.com").0, "Anie Solutions BBS: you log in by your code alone now");
+    let said = frank.answer("  Your choice: ", "b").await;
+    assert!(said.contains("Logging in  by your authenticator's code alone"), "{said:?}");
+    frank.until(MENU_KEYS).await;
+    frank.send("q").await;
+
+    // Then the code alone gets him in; a wrong password typed is still wrong.
+    let mut frank = Caller::dial(&board).await;
+    let said = frank.log_in("frank", "", &next_code(&seed, &mut last).await).await;
+    assert!(said.contains("The bulletin"), "in by the code alone: {said:?}");
+    frank.send("q").await;
+    let mut frank = Caller::dial(&board).await;
+    let said = frank.log_in_refused("frank", "not his password", &next_code(&seed, &mut last).await).await;
+    assert!(said.contains(wrong), "a wrong password: {said:?}");
+
+    // The day's tenth wrong try holds the handle, said no differently, and
+    // he's mailed.
+    board.sql(|db| db.execute("UPDATE members SET day_failures = 9 WHERE handle = 'frank'", &[]).unwrap());
+    let said = frank.log_in_refused("frank", "", "000000").await;
+    assert!(said.contains(wrong), "{said:?}");
+    assert_eq!(board.last_mail("frank@example.com").0, "Anie Solutions BBS: logging in as frank takes a mailed code now");
+    assert!(board.sql(|db| db.query_one("SELECT held FROM members WHERE handle = 'frank'", &[]).unwrap().get::<_, bool>(0)));
+
+    // His right code alone then takes a mailed code as well, and once he's
+    // typed it the handle's let go, its day's count from nothing.
+    frank.send("l").await;
+    frank.answer(" Handle: ", "frank").await;
+    frank.answer(PASSWORD, "").await;
+    frank.answer("(or a recovery code): ", &next_code(&seed, &mut last).await).await;
+    let said = frank.until(" The code from the mail (R sends another): ").await;
+    assert!(said.contains("so a code is coming"), "{said:?}");
+    frank.send(&format!("{}\r", board.code_for("frank@example.com"))).await;
+    let said = frank.go_on().await;
+    assert!(said.contains("The bulletin"), "{said:?}");
+    frank.until(MENU_KEYS).await;
+    let (held, day): (bool, i32) = board.sql(|db| {
+        let r = db.query_one("SELECT held, day_failures FROM members WHERE handle = 'frank'", &[]).unwrap();
+        (r.get(0), r.get(1))
+    });
+    assert_eq!((held, day), (false, 0));
+
+    // Turning it off takes a code alone, and he's mailed.
+    frank.send("p").await;
+    frank.answer("  Your choice: ", "c").await;
+    frank.answer("(or a recovery code): ", &next_code(&seed, &mut last).await).await;
+    assert!(frank.go_on().await.contains("You log in with your password and your authenticator's code again."));
+    assert_eq!(board.last_mail("frank@example.com").0, "Anie Solutions BBS: you log in with your password again");
+    let code_only: bool = board.sql(|db| db.query_one("SELECT code_only FROM members WHERE handle = 'frank'", &[]).unwrap().get(0));
+    assert!(!code_only);
 }
 
 #[tokio::test]

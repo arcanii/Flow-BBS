@@ -105,7 +105,10 @@ ssh -p 2222 guest@localhost             # call it
 - `boards/anie`: `anie-bbs`, the Anie Solutions BBS, a board in code on
   PostgreSQL (the sync `postgres` crate, a connection a call):
   `account.rs` (applying, emailed codes, the authenticator, logins,
-  recovery, profile), `forums.rs`, `tracker.rs`, `sysop.rs`, `games.rs`
+  recovery, profile; logging in by the code alone, a member's choice,
+  `gets_in`, with failed logins capped a day as well as in a row: past
+  `DAY_CAP` a handle is `held` and takes a mailed code too, until its
+  member proves their address), `forums.rs`, `tracker.rs`, `sysop.rs`, `games.rs`
   (the game room: Neko's door, `ANIE_BBS_NEKO`; Mines',
   `ANIE_BBS_MINES`, each game given a data folder of its own whose
   `flow-mines/best.json` is taken in after for the leaderboard,

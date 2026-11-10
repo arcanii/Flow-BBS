@@ -214,7 +214,12 @@ ssh-keygen -lf host_key
 handle, their name, an email address (a code is mailed to prove it), a
 password, and an authenticator app set up from a QR code, with eight
 recovery codes. The sysop decides each application from the board's sysop
-menu. A member logs in with handle, password and the app's code; staff
+menu. A member logs in with handle, password and the app's code, or, if
+they've chosen it in Profile and security, with handle and code alone
+(the password left out: everyone's asked the same, so nothing says who
+has); ten wrong tries at a handle in a day hold it, and logging in then
+takes a code mailed to the member as well, until they've proved their
+address. Staff
 moderate the forums and triage bugs; the sysop also manages members and
 roles, forums, the tracker's products, the bulletin, and reads the log.
 Posts, bug reports and the bulletin are written in the SDK's full-screen

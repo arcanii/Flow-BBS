@@ -8,6 +8,14 @@
 //! is waiting out its lock), and an address already taken goes through the
 //! same steps as any other, its owner told by mail and the code that never
 //! came never right. Codes and limits are crypto.rs's and United One's.
+//!
+//! A member may choose to log in by their authenticator's code alone,
+//! leaving the password out. The code is then the one factor, and a guess
+//! at it has three chances in a million, so a handle's failed logins are
+//! capped in a day as well as in a row: past the cap it's held, and logging
+//! in takes a code mailed to the member too, until they've proved their
+//! address. Everyone is asked the same, the password with them, so nothing
+//! says which handles log in by code alone.
 
 use std::io;
 
@@ -27,6 +35,11 @@ const SENDS_PER_HOUR: i64 = 3;
 /// Failed logins in a row before a handle waits, and how long it waits.
 const LOCK_AFTER: i32 = 5;
 const LOCK_MINUTES: i32 = 15;
+/// Failed logins in a day before a handle is held: a guesser at a code alone
+/// gets these, about one chance in a hundred a year of it coming right.
+const DAY_CAP: i32 = 10;
+/// What the password prompt says, for everyone alike.
+pub const PASSWORD: &str = " Password (Enter alone to log in by code): ";
 /// Applications waiting at once (unverified or pending) before the board
 /// takes no more, so it can't be made to mail without end.
 const OPEN_APPLICATIONS: i64 = 200;
@@ -103,9 +116,13 @@ struct Account {
     email: String,
     email_verified: bool,
     locked: bool,
+    /// They log in by their code alone, if they leave the password out.
+    code_only: bool,
+    /// Past the day's cap of failed logins: a mailed code is asked for too.
+    held: bool,
 }
 
-const ACCOUNT: &str = "SELECT id, handle, password_hash, seed_sealed, last_step, role, status, status_note, email, email_verified, coalesce(locked_until > now(), false) FROM members";
+const ACCOUNT: &str = "SELECT id, handle, password_hash, seed_sealed, last_step, role, status, status_note, email, email_verified, coalesce(locked_until > now(), false), code_only, held FROM members";
 
 impl Account {
     fn from(r: &Row) -> Account {
@@ -121,8 +138,33 @@ impl Account {
             email: r.get(8),
             email_verified: r.get(9),
             locked: r.get(10),
+            code_only: r.get(11),
+            held: r.get(12),
         }
     }
+}
+
+/// What was typed for the password: nothing, or it and whether it's right.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Typed {
+    Nothing,
+    Right,
+    Wrong,
+}
+
+/// Whether a login gets in, from what came right: the password and a code
+/// (or a recovery code); the password alone where there's no authenticator
+/// (`seed`) yet, an application not finished or one the sysop reset, which
+/// mailed codes stand in for after; or, for a member who chose it, the code
+/// alone with the password left out. Never while the handle waits out its
+/// lock.
+fn gets_in(typed: Typed, factor: bool, seed: bool, code_only: bool, locked: bool) -> bool {
+    !locked
+        && match typed {
+            Typed::Right => factor || !seed,
+            Typed::Nothing => code_only && factor,
+            Typed::Wrong => false,
+        }
 }
 
 /// How a second factor came: a code's step, or a recovery code's hash.
@@ -431,6 +473,32 @@ impl Session<'_> {
         Ok(n == 1)
     }
 
+    /// Holds handle `id`, past the day's cap of failed logins: logging in
+    /// takes a mailed code as well from now on, and its member is told.
+    fn hold(&mut self, id: i64, handle: &str, email: &str) -> io::Result<()> {
+        if self.db.execute("UPDATE members SET held = true WHERE id = $1 AND NOT held", &[&id]).db()? == 1 {
+            self.audit(Some(id), "login held", handle)?;
+            let name = self.bbs.settings.name.clone();
+            self.mail(
+                email,
+                &format!("{name}: logging in as {handle} takes a mailed code now"),
+                &format!(
+                    "There have been {DAY_CAP} wrong tries at logging in as {handle} on {name} in a day, so the next time you log in, a code will be mailed here for you to type as well. That stops anyone guessing at your codes.\n\nIf those tries weren't yours, someone may be guessing: think about changing your password, and tell the sysop."
+                ),
+            );
+        }
+        Ok(())
+    }
+
+    /// A held handle's member has proved their address: the handle is let go
+    /// and its day's count starts again.
+    fn unhold(&mut self, id: i64, handle: &str) -> io::Result<()> {
+        if self.db.execute("UPDATE members SET held = false, day_failures = 0, day_failures_since = NULL WHERE id = $1 AND held", &[&id]).db()? == 1 {
+            self.audit(Some(id), "login let go", handle)?;
+        }
+        Ok(())
+    }
+
     /// Logging in: `true` once they're in as an active member.
     pub fn login(&mut self) -> io::Result<bool> {
         self.doing("Logging in");
@@ -442,19 +510,24 @@ impl Session<'_> {
             return Ok(false);
         }
         let Some(handle) = ui::answer(self.call, " Handle: ", 20)? else { return Ok(false) };
-        let Some(password) = self.call.ask_secret(" Password: ", 128)? else { return Ok(false) };
+        let Some(password) = self.call.ask_secret(PASSWORD, 128)? else { return Ok(false) };
         let Some(code) = self.call.ask_secret(" Code from your authenticator (or a recovery code): ", 16)? else { return Ok(false) };
 
         let account = self.db.query_opt(&format!("{ACCOUNT} WHERE handle_key = lower($1)"), &[&handle]).db()?.map(|r| Account::from(&r));
+        // Checked even when none was typed, so the answer takes as long
+        // either way and its time doesn't say who logs in by code alone.
         let password_right = crypto::check_password(&password, account.as_ref().map(|a| a.password_hash.as_str()));
+        let typed = match (password.is_empty(), password_right) {
+            (true, _) => Typed::Nothing,
+            (false, true) => Typed::Right,
+            (false, false) => Typed::Wrong,
+        };
         let factor = match &account {
             Some(a) => self.factor(a, &code)?,
             None => None,
         };
-        // No authenticator is no second factor to check: an application not
-        // yet finished, or one the sysop reset (mailed codes stand in below).
         let in_ = match &account {
-            Some(a) if password_right && !a.locked && (factor.is_some() || a.seed.is_none()) => match &factor {
+            Some(a) if gets_in(typed, factor.is_some(), a.seed.is_some(), a.code_only, a.locked) => match &factor {
                 Some(f) => self.spend(a.id, f)?,
                 None => true,
             },
@@ -464,13 +537,23 @@ impl Session<'_> {
             self.bbs.guard.lock().unwrap().failed(ip);
             let id = self.db.query_opt("SELECT id FROM members WHERE handle_key = lower($1)", &[&handle]).db()?.map(|r| r.get::<_, i64>(0));
             if let Some(id) = id {
-                self.db
-                    .execute(
+                // In a row, and in the day from the first of them (each SET
+                // reads the row as it was).
+                let r = self
+                    .db
+                    .query_one(
                         "UPDATE members SET failed_logins = CASE WHEN failed_logins + 1 >= $2 THEN 0 ELSE failed_logins + 1 END, \
-                         locked_until = CASE WHEN failed_logins + 1 >= $2 THEN now() + make_interval(mins => $3) ELSE locked_until END WHERE id = $1",
+                         locked_until = CASE WHEN failed_logins + 1 >= $2 THEN now() + make_interval(mins => $3) ELSE locked_until END, \
+                         day_failures = CASE WHEN day_failures_since > now() - interval '1 day' THEN day_failures + 1 ELSE 1 END, \
+                         day_failures_since = CASE WHEN day_failures_since > now() - interval '1 day' THEN day_failures_since ELSE now() END \
+                         WHERE id = $1 RETURNING day_failures, held, handle, email",
                         &[&id, &LOCK_AFTER, &LOCK_MINUTES],
                     )
                     .db()?;
+                let (day, held, member, email): (i32, bool, String, String) = (r.get(0), r.get(1), r.get(2), r.get(3));
+                if day >= DAY_CAP && !held {
+                    self.hold(id, &member, &email)?;
+                }
             }
             self.audit(id, "login failed", &handle)?;
             ui::oops(self.call, "That handle, password or code isn't right.")?;
@@ -508,11 +591,18 @@ impl Session<'_> {
         }
         if a.seed.is_none() {
             // The sysop reset their authenticator: the address proves it's
-            // them before a new one is set up.
+            // them before a new one is set up (and, held, that'll do too).
             self.call.say("\n Your authenticator was reset, so a code is coming to your email first.\n")?;
             if !self.prove_email(Some(a.id), &a.email, "enrol", Send::Code)? || !self.enrol(a.id, &a.handle)? {
                 return Ok(false);
             }
+            self.unhold(a.id, &a.handle)?;
+        } else if a.held {
+            self.call.say("\n There have been many wrong tries at logging in as you lately, so a code is coming\n to your email as well.\n")?;
+            if !self.prove_email(Some(a.id), &a.email, "login", Send::Code)? {
+                return Ok(false);
+            }
+            self.unhold(a.id, &a.handle)?;
         }
         self.me = Some(Me { id: a.id, handle: a.handle.clone(), role: a.role });
         self.doing("Logging in");
@@ -553,6 +643,8 @@ impl Session<'_> {
         let hash = crypto::hash_password(&password);
         self.db.execute("UPDATE members SET password_hash = $2, failed_logins = 0, locked_until = NULL WHERE id = $1", &[&id, &hash]).db()?;
         self.audit(Some(id), "password reset", &handle)?;
+        // The address is proved, which is what a held handle waits for.
+        self.unhold(id, &handle)?;
         let name = self.bbs.settings.name.clone();
         self.mail(&email, &format!("{name}: your password was changed"), &format!("The password for {handle} on {name} was just changed, with a code mailed here.\n\nIf that wasn't you, tell the sysop."));
         ui::done(self.call, "Your password is changed. Log in with it and your authenticator's code.")?;
@@ -568,26 +660,29 @@ impl Session<'_> {
             let r = self
                 .db
                 .query_one(
-                    "SELECT real_name, email, to_char(created_at, 'YYYY-MM-DD'), (SELECT count(*) FROM recovery_codes WHERE member_id = $1 AND used_at IS NULL) FROM members WHERE id = $1",
+                    "SELECT real_name, email, to_char(created_at, 'YYYY-MM-DD'), (SELECT count(*) FROM recovery_codes WHERE member_id = $1 AND used_at IS NULL), code_only FROM members WHERE id = $1",
                     &[&me.id],
                 )
                 .db()?;
-            let (real, email, since, left): (String, String, String, i64) = (r.get(0), r.get(1), r.get(2), r.get(3));
+            let (real, email, since, left, code_only): (String, String, String, i64, bool) = (r.get(0), r.get(1), r.get(2), r.get(3), r.get(4));
             ui::heading(self.call, "Profile and security")?;
             self.call.say(&format!(
-                " Handle      {BOLD}{}{PLAIN}\n Name        {}\n Email       {}\n Role        {}\n Member since {since}\n Recovery codes left: {left}\n\n",
+                " Handle      {BOLD}{}{PLAIN}\n Name        {}\n Email       {}\n Role        {}\n Member since {since}\n Logging in  {}\n Recovery codes left: {left}\n\n",
                 me.handle,
                 printable(&real),
                 printable(&email),
-                me.role.as_str()
+                me.role.as_str(),
+                if code_only { "by your authenticator's code alone" } else { "by your password and your authenticator's code" }
             ))?;
+            let switch = if code_only { "Log in with your password again" } else { "Log in by your authenticator's code alone" };
             self.call.say(&format!(
-                "  {0}[p]{PLAIN} Change your password\n  {0}[a]{PLAIN} Move your authenticator to a new phone\n  {0}[r]{PLAIN} New recovery codes\n  {0}[e]{PLAIN} Change your email address\n  {0}[b]{PLAIN} Back\n\n",
+                "  {0}[p]{PLAIN} Change your password\n  {0}[a]{PLAIN} Move your authenticator to a new phone\n  {0}[r]{PLAIN} New recovery codes\n  {0}[c]{PLAIN} {switch}\n  {0}[e]{PLAIN} Change your email address\n  {0}[b]{PLAIN} Back\n\n",
                 ui::CYAN
             ))?;
             let Some(choice) = ui::answer(self.call, "  Your choice: ", 1)? else { return Ok(()) };
             match choice.to_ascii_lowercase().as_str() {
                 "p" => self.change_password()?,
+                "c" => self.code_only(!code_only)?,
                 "a" => {
                     if self.confirm_factor()? && self.enrol(me.id, &me.handle)? {
                         ui::done(self.call, "Your new authenticator is set up; the old one's codes work no more.")?;
@@ -607,6 +702,51 @@ impl Session<'_> {
                 return Ok(());
             }
         }
+    }
+
+    /// Logging in by the authenticator's code alone, turned on (`on`) or
+    /// off, the member mailed either way. On takes the password and a code,
+    /// since it's the password it lets them leave out; off takes a code
+    /// alone, as a member who's logged in by code for a while may have lost
+    /// the password, and turning it off asks more of a login, not less.
+    fn code_only(&mut self, on: bool) -> io::Result<()> {
+        let me = self.me().clone();
+        let r = self.db.query_one("SELECT password_hash, email FROM members WHERE id = $1", &[&me.id]).db()?;
+        let (hash, email): (String, String) = (r.get(0), r.get(1));
+        if on {
+            self.call.say(&format!(
+                "\n With this on, you log in with your handle and your authenticator's code, pressing\n Enter alone for the password. Anyone with your phone and your handle could log in,\n so keep a lock on the phone. After {DAY_CAP} wrong tries at your handle in a day, logging\n in takes a code mailed to you as well.\n\n"
+            ))?;
+            let Some(current) = self.call.ask_secret(" Your password: ", 128)? else { return Ok(()) };
+            if !crypto::check_password(&current, Some(&hash)) {
+                ui::oops(self.call, "That isn't your password.")?;
+                self.pause()?;
+                return Ok(());
+            }
+        }
+        if !self.confirm_factor()? {
+            return Ok(());
+        }
+        self.db.execute("UPDATE members SET code_only = $2 WHERE id = $1", &[&me.id, &on]).db()?;
+        self.audit(None, if on { "code-only login on" } else { "code-only login off" }, &me.handle)?;
+        let name = self.bbs.settings.name.clone();
+        let (subject, body, done) = if on {
+            (
+                format!("{name}: you log in by your code alone now"),
+                format!("Logging in by the authenticator's code alone was just turned on for {} on {name}: the password can be left out.\n\nIf that wasn't you, tell the sysop.", me.handle),
+                "You log in by your authenticator's code alone now: Enter alone for the password.",
+            )
+        } else {
+            (
+                format!("{name}: you log in with your password again"),
+                format!("Logging in by the authenticator's code alone was just turned off for {} on {name}: logging in takes the password again.\n\nIf that wasn't you, tell the sysop.", me.handle),
+                "You log in with your password and your authenticator's code again.",
+            )
+        };
+        self.mail(&email, &subject, &body);
+        ui::done(self.call, done)?;
+        self.pause()?;
+        Ok(())
     }
 
     /// Asks for the authenticator's code (or a recovery code) and uses it
@@ -703,6 +843,21 @@ mod tests {
         assert!(!email_ok("bryan example.com"));
         assert!(!email_ok("Bryan <bryan@example.com>"));
         assert!(!email_ok(""));
+    }
+
+    #[test]
+    fn the_code_alone_gets_in_only_for_a_member_who_chose_it_and_never_without_one() {
+        use Typed::*;
+        // (password, code right, has an authenticator, code alone chosen, locked)
+        assert!(gets_in(Right, true, true, false, false), "both, as ever");
+        assert!(!gets_in(Right, false, true, false, false), "the password alone, with an authenticator set up");
+        assert!(gets_in(Right, false, false, false, false), "the password alone, with none yet: mailed codes after");
+        assert!(gets_in(Nothing, true, true, true, false), "the code alone, chosen");
+        assert!(!gets_in(Nothing, true, true, false, false), "the code alone, not chosen");
+        assert!(!gets_in(Nothing, false, false, true, false), "no password and no authenticator is nothing at all");
+        assert!(!gets_in(Wrong, true, true, true, false), "a wrong password typed is wrong, chosen or not");
+        assert!(gets_in(Right, true, true, true, false), "a member who chose it may still type both");
+        assert!(!gets_in(Nothing, true, true, true, true), "not while the handle waits out its lock");
     }
 
     #[test]
