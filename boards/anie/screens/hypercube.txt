@@ -1,0 +1,8 @@
+{bold}{bright-cyan}The hypercube{/}{fx stir}
+{dim}A tesseract, the cube of four dimensions: sixteen corners, thirty-two edges.{/}
+{dim}As it turns through the fourth, its inner cube comes out through the outer one.{/}
+
+![A hypercube turning through four dimensions](made/hypercube.glb){rows 14}
+
+{in flow}{dim}Edges along{/} {bright-cyan}x{/}{dim},{/} {bright-magenta}y{/}{dim},{/} {bright-yellow}z{/} {dim}and{/} {bright-green}w{/}{dim}. Flow plays every move itself.{/}
+{not in flow}{dim}In Flow the hypercube turns here; elsewhere you see its name.{/}

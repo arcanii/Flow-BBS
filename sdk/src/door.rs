@@ -6,7 +6,11 @@
 //! `TERM_PROGRAM=flow-terminal` in its environment, so Flow's games draw
 //! their pictures and effects, and when they ask the terminal its version
 //! or a cell's size, the questions reach the caller's Flow and the answers
-//! come back down. When the door ends, the call goes back to the board.
+//! come back down. A door gets none of the server's own environment but
+//! what a program needs to start (`PATH`, `HOME`, the language and time
+//! zone), so a board's settings and secrets never reach one; it gets the
+//! caller's `TERM` and Flow's variables, and what the board gives it
+//! (`Door::env`). When the door ends, the call goes back to the board.
 
 use std::ffi::OsString;
 use std::io::{self, Read, Write};
@@ -37,6 +41,14 @@ impl Door {
     }
 }
 
+/// What a door keeps of the server's environment: where programs are, its
+/// home, its language and time zone, and on Windows what a program needs
+/// to start at all.
+const KEPT: &[&str] = &[
+    "PATH", "HOME", "USER", "LOGNAME", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_MESSAGES", "TZ", "TMPDIR",
+    "SystemRoot", "SystemDrive", "windir", "ComSpec", "PATHEXT", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "ProgramData",
+];
+
 /// How often the call looks to see whether the door has ended.
 const LOOK: Duration = Duration::from_millis(50);
 
@@ -50,22 +62,22 @@ impl Call {
         if let Some(dir) = &door.dir {
             command.cwd(dir);
         }
-        command.env("TERM", self.term());
-        match &self.caller {
-            Caller::Flow { version } => {
-                command.env("TERM_PROGRAM", FLOW);
-                match version {
-                    Some(v) => command.env("TERM_PROGRAM_VERSION", v),
-                    None => command.env_remove("TERM_PROGRAM_VERSION"),
-                }
-            }
-            Caller::Other { .. } => {
-                command.env_remove("TERM_PROGRAM");
-                command.env_remove("TERM_PROGRAM_VERSION");
+        // A door is any program, facing whoever calls: it gets none of the
+        // server's own variables (a board's settings and secrets) but what
+        // a program needs to start.
+        command.env_clear();
+        for name in KEPT {
+            if let Some(value) = std::env::var_os(name) {
+                command.env(name, value);
             }
         }
-        command.env_remove("LC_TERMINAL");
-        command.env_remove("LC_TERMINAL_VERSION");
+        command.env("TERM", self.term());
+        if let Caller::Flow { version } = &self.caller {
+            command.env("TERM_PROGRAM", FLOW);
+            if let Some(v) = version {
+                command.env("TERM_PROGRAM_VERSION", v);
+            }
+        }
         for (name, value) in &door.env {
             command.env(name, value);
         }

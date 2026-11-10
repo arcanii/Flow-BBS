@@ -3,6 +3,9 @@
  {bold}Mines{/}: open the field without setting off a mine. Each member's best
  time on each size goes on the board's leaderboard, so you can race each
  other: beat a time, and the board says where you stand.
+ {bold}Dungeon{/}: the mainframe original of Zork, from MIT in 1980. Type what
+ you do; a member's SAVE keeps the game for next time.
  {bold}Neko{/}: the desktop cat of 1989 runs to your pointer, and naps.
 
- {dim}Games here are new and may change. q (or Esc, for Neko) brings you back.{/}
+ {dim}Games here are new and may change. q brings you back: Esc for Neko,{/}
+ {dim}and QUIT for Dungeon.{/}

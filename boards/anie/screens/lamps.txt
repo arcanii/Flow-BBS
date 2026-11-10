@@ -1,0 +1,8 @@
+{bold}{bright-cyan}Light sources{/}
+{dim}Three lamps of the model's own, red, green and blue, go round a ball, a block{/}
+{dim}and a pillar. Where their light falls together it mixes: yellow, cyan, magenta.{/}
+
+![Three colored lamps going round a white ball](made/lamps.glb){rows 14}
+
+{in flow}{dim}Flow lights the room by them, in place of its own light.{/}
+{not in flow}{dim}In Flow the lamps go round here; elsewhere you see their name.{/}

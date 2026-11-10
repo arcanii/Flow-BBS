@@ -1,0 +1,5 @@
+{bold}{bright-cyan}Typeset fonts{/}
+{dim}Flow draws its letters in one face. Type in any other comes as a picture:{/}
+{dim}kerned, its ligatures joined, Japanese set down the page and Chinese across it.{/}
+
+![A page of type, in English, Japanese and Chinese](pictures/type.png){rows 18}

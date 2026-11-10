@@ -108,9 +108,12 @@ A screen is lines of text, with marks in braces:
 | `{{` | A brace |
 
 A line that's only `![words](pictures/banner.png)` is a picture, or a
-turning model where the file is a `.obj` or `.glb`. A caller in Flow sees
-the pictures and models, hears the sounds and sees the effects; any other
-caller sees the words in brackets, in their own colors.
+turning model where the file is a `.obj` or `.glb`; a glTF with an
+animation of its own plays that instead of being turned. A board in code
+can make its pictures and models itself and give them to `Screen::read_with`
+by the names its screens use. A caller in Flow sees the pictures and
+models, hears the sounds and sees the effects; any other caller sees the
+words in brackets, in their own colors.
 
 A picture is its own size in cells; `{rows 10}` after it makes it ten rows
 tall whatever the size of the caller's cells, so a logo can be sent sharp
@@ -140,6 +143,9 @@ the caller's keys and its output pass straight through, so a door that
 asks the terminal something gets the caller's answer. When the caller is
 in Flow, its environment has `TERM_PROGRAM=flow-terminal`, so Flow's games
 (Flow Mines, Flow Rogue, Flow Invaders) draw as they do in a Flow tab.
+Otherwise a door gets nothing of the server's environment but what a
+program needs to start (`PATH`, `HOME`, the language and time zone), so a
+board's settings and secrets never reach a program that callers type at.
 When it ends, the caller is back at the menu.
 
 ### The cat
@@ -193,9 +199,17 @@ moderate the forums and triage bugs; the sysop also manages members and
 roles, forums, the tracker's products, the bulletin, and reads the log.
 Guests and members alike have its game room (experimental): Mines
 (`flow-mines`, from Flow-Games), each member's best time on each size kept
-for a leaderboard they share, and Neko (`flow-cat`, a door its image
-carries, with Neko's notice); and its demonstrations, a gallery of a
-picture, a turning model, an effect and a sound. In Flow its welcome and
+for a leaderboard they share; Dungeon, the mainframe original of Zork
+(devshane/zork's C, public domain, built into its image without its
+`!` shell escape or its debugging tool, and with its parser's words
+bounded), a member's saved game kept for their next call; and Neko
+(`flow-cat`, a door its image carries, with Neko's notice); and its
+demonstrations: a gallery of a
+picture, a turning model, an effect and a sound; Newell's teapot, as
+OpenGL's GLUT drew it; a hypercube turning through four dimensions; a room
+lit by three lamps of its own going round; and a page of type. The teapot,
+the hypercube and the room are glTF the board makes in code, which Flow
+turns and plays itself. In Flow its welcome and
 main menu show Ánië's logo; other terminals get its name in letters.
 Its codes follow United One's rules (arcanii/United_ONE-BackendSystem,
 ADR-0013 and ADR-0024): see `boards/anie/src/crypto.rs`.

@@ -11,9 +11,12 @@
 //!   that line.
 //!
 //! A line that's only `![words](file)` is a picture (a PNG) or a turning
-//! model (`.obj`, `.glb`), its file from the board's folder. A caller in
-//! Flow sees them, and hears the sounds and sees the effects; any other
-//! caller sees the words in brackets, and the colors. `{{` is a brace.
+//! model (`.obj`, `.glb`), its file from the board's folder, or one the
+//! board made in code by that name (`Screen::read_with`). A glTF with an
+//! animation of its own plays that, as it is, and isn't turned as well. A
+//! caller in Flow sees them, and hears the sounds and sees the effects;
+//! any other caller sees the words in brackets, and the colors. `{{` is a
+//! brace.
 //!
 //! A picture is its own size in cells, or `{rows 10}` after it makes it
 //! that many rows tall, as wide as that makes it, whatever the size of
@@ -66,7 +69,9 @@ pub(crate) enum Line {
     Text(Vec<Piece>),
     /// `rows`: how tall it's asked to be, where it says.
     Picture { words: String, png: Arc<Vec<u8>>, size: (u32, u32), rows: Option<u16> },
-    Model { words: String, bytes: Arc<Vec<u8>>, format: Format, rows: Option<u16> },
+    /// `turned`: Flow turns it (`animate=1`), as it does every model but
+    /// a glTF that moves itself.
+    Model { words: String, bytes: Arc<Vec<u8>>, format: Format, rows: Option<u16>, turned: bool },
 }
 
 impl Line {
@@ -119,18 +124,29 @@ const EFFECTS: &[(&str, Kind)] = &[("ripple", Kind::Ripple), ("burst", Kind::Bur
 impl Screen {
     /// Reads the screen in `file`, its pictures and models from `folder`.
     pub fn read(file: &Path, folder: &Path) -> io::Result<Screen> {
+        Screen::read_with(file, folder, &[])
+    }
+
+    /// `read`, where a picture or a model named in `made` is the board's
+    /// own, made in code, rather than a file in `folder`.
+    pub fn read_with(file: &Path, folder: &Path, made: &[(&str, &[u8])]) -> io::Result<Screen> {
         let text = fs::read_to_string(file).map_err(|e| io::Error::new(e.kind(), format!("{}: {e}", file.display())))?;
-        Screen::parse(&text, folder).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{}: {e}", file.display())))
+        Screen::parse_with(&text, folder, made).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{}: {e}", file.display())))
     }
 
     /// A screen from its text, its pictures and models from `folder`.
     pub fn parse(text: &str, folder: &Path) -> Result<Screen, String> {
+        Screen::parse_with(text, folder, &[])
+    }
+
+    /// `parse`, with the board's own pictures and models in `made`.
+    pub fn parse_with(text: &str, folder: &Path, made: &[(&str, &[u8])]) -> Result<Screen, String> {
         let mut lines = Vec::new();
         for (n, line) in text.lines().enumerate() {
             let at = |e: String| format!("line {}: {e}", n + 1);
             let (who, line) = who(line);
             lines.push((who, match picture(line) {
-                Some((words, file, rows)) => media(words, file, rows, folder).map_err(at)?,
+                Some((words, file, rows)) => media(words, file, rows, folder, made).map_err(at)?,
                 None => Line::Text(pieces(line).map_err(at)?),
             }));
         }
@@ -174,25 +190,46 @@ fn picture(line: &str) -> Option<(&str, &str, Option<&str>)> {
     Some((words, file, rows))
 }
 
-fn media(words: &str, file: &str, rows: Option<&str>, folder: &Path) -> Result<Line, String> {
+fn media(words: &str, file: &str, rows: Option<&str>, folder: &Path, made: &[(&str, &[u8])]) -> Result<Line, String> {
     let rows = match rows {
         Some(r) => Some(r.parse::<u16>().ok().filter(|&n| n > 0).ok_or(format!("{{rows {r}}}: rows are a number, 1 or more"))?),
         None => None,
     };
-    let path = folder.join(file);
-    let bytes = fs::read(&path).map_err(|e| format!("{file}: {e}"))?;
+    let bytes = match made.iter().find(|(name, _)| *name == file) {
+        Some((_, bytes)) => bytes.to_vec(),
+        None => fs::read(folder.join(file)).map_err(|e| format!("{file}: {e}"))?,
+    };
     let words = words.to_string();
     let lower = file.to_ascii_lowercase();
     if lower.ends_with(".png") {
         let size = png_size(&bytes).ok_or(format!("{file} isn't a PNG"))?;
         Ok(Line::Picture { words, png: Arc::new(bytes), size, rows })
     } else if lower.ends_with(".glb") {
-        Ok(Line::Model { words, bytes: Arc::new(bytes), format: Format::Glb, rows })
+        let turned = !moves_itself(&bytes);
+        Ok(Line::Model { words, bytes: Arc::new(bytes), format: Format::Glb, rows, turned })
     } else if lower.ends_with(".obj") {
-        Ok(Line::Model { words, bytes: Arc::new(bytes), format: Format::Obj, rows })
+        Ok(Line::Model { words, bytes: Arc::new(bytes), format: Format::Obj, rows, turned: true })
     } else {
         Err(format!("{file}: a picture is a .png, a model a .obj or .glb"))
     }
+}
+
+/// Whether a GLB has an animation of its own: its JSON chunk (the first)
+/// names `"animations"` with something in them. A file that can't be read
+/// so far says no, and is turned as any model is.
+fn moves_itself(glb: &[u8]) -> bool {
+    let le = |i: usize| glb.get(i..i + 4).map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]) as usize);
+    if !glb.starts_with(b"glTF") || glb.get(16..20) != Some(b"JSON") {
+        return false;
+    }
+    let Some(json) = le(12).and_then(|n| glb.get(20..20 + n)) else {
+        return false;
+    };
+    let json = String::from_utf8_lossy(json);
+    json.match_indices("\"animations\"").any(|(i, key)| {
+        let rest = json[i + key.len()..].trim_start();
+        rest.strip_prefix(':').map(str::trim_start).and_then(|r| r.strip_prefix('[')).is_some_and(|r| !r.trim_start().starts_with(']'))
+    })
 }
 
 /// A PNG's width and height, from its header.
@@ -341,14 +378,15 @@ impl Call {
                     out.push_str(&format!("\x1b[{};1H", row + 1));
                     self.shown.push(Shown::Picture(id));
                 }
-                Line::Model { words, bytes, format, rows: tall } if flow => {
+                Line::Model { words, bytes, format, rows: tall, turned } if flow => {
                     let mr = tall.unwrap_or(MODEL_ROWS).min(room);
                     let mc = (mr as u32 * cell.1 / cell.0).clamp(1, cols as u32) as u16;
                     let id = self.next_id();
                     // Room for it first, then the model over those cells.
                     out.push_str(&"\r\n".repeat(mr as usize));
                     out.push_str(&model::register_chunks(id, *format, bytes, Some(words), 3072));
-                    out.push_str(&model::Place::over(id, (row, 0), (mc, mr)).look(Look { animate: Some(true), ..Look::default() }).escape());
+                    let look = if *turned { Look { animate: Some(true), ..Look::default() } } else { Look::default() };
+                    out.push_str(&model::Place::over(id, (row, 0), (mc, mr)).look(look).escape());
                     row += mr;
                     self.shown.push(Shown::Model(id));
                 }
@@ -474,6 +512,36 @@ mod tests {
         assert!(matches!(&s.lines[1].1, Line::Model { format: Format::Obj, rows: None, .. }));
         assert!(matches!(&s.lines[2].1, Line::Picture { rows: Some(12), .. }));
         assert!(matches!(&s.lines[3].1, Line::Model { rows: Some(4), .. }));
+    }
+
+    /// A GLB of nothing but `json`.
+    fn glb(json: &str) -> Vec<u8> {
+        let mut json = json.as_bytes().to_vec();
+        while !json.len().is_multiple_of(4) {
+            json.push(b' ');
+        }
+        let mut out = b"glTF".to_vec();
+        out.extend(2u32.to_le_bytes());
+        out.extend((20 + json.len() as u32).to_le_bytes());
+        out.extend((json.len() as u32).to_le_bytes());
+        out.extend(b"JSON");
+        out.extend(json);
+        out
+    }
+
+    #[test]
+    fn a_model_the_board_made_is_taken_by_its_name_and_one_that_moves_itself_isnt_turned() {
+        let dir = folder("made");
+        let moving = glb(r#"{"asset":{"version":"2.0"},"animations" : [ {"channels":[],"samplers":[]} ]}"#);
+        let still = glb(r#"{"asset":{"version":"2.0"},"nodes":[{"name":"animations"}],"animations":[]}"#);
+        let made: &[(&str, &[u8])] = &[("made/moving.glb", &moving), ("made/still.glb", &still)];
+        let s = Screen::parse_with("![Moving](made/moving.glb)\n![Still](made/still.glb)\n![A cube](pictures/cube.obj)", &dir, made).unwrap();
+        assert!(matches!(&s.lines[0].1, Line::Model { bytes, format: Format::Glb, turned: false, .. } if **bytes == moving));
+        assert!(matches!(&s.lines[1].1, Line::Model { turned: true, .. }), "an empty list of animations is none");
+        assert!(matches!(&s.lines[2].1, Line::Model { format: Format::Obj, turned: true, .. }));
+        assert!(Screen::parse("![Moving](made/moving.glb)", &dir).unwrap_err().contains("made/moving.glb"), "not a file of the folder's");
+        let flow = shown(&s, true, 1);
+        assert_eq!(flow.matches(";animate=1").count(), 2, "the two still models turn: {flow:.300}");
     }
 
     #[test]

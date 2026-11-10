@@ -1,0 +1,3 @@
+{bold}{bright-cyan}Demonstrations{/}
+{dim}What Flow draws for a board: pictures, models that move, light, and type.{/}
+{not in flow}{dim}You're not in Flow, so each tells you what it would show.{/}

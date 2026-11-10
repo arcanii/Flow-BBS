@@ -1,2 +1,4 @@
 # Scripts run on Linux boxes keep Unix line endings wherever they are checked out.
 *.sh text eol=lf
+# A patch the image applies with git keeps them too.
+*.patch text eol=lf

@@ -1,7 +1,9 @@
 //! The game room (experimental), for guests and members: Neko, the cat
-//! that chases the pointer, and Mines, whose members' best times make a
-//! leaderboard they share. Both are doors on the server's PATH: `flow-cat`
-//! (this repository's `doors/cat`) and `flow-mines` (Flow-Games').
+//! that chases the pointer; Mines, whose members' best times make a
+//! leaderboard they share; and Dungeon, the mainframe original of Zork.
+//! Each is a door on the server's PATH: `flow-cat` (this repository's
+//! `doors/cat`), `flow-mines` (Flow-Games') and `dungeon` (devshane/zork's
+//! C, built into the board's image as deploy/Dockerfile says).
 //!
 //! Mines keeps a best time for each of its sizes in `flow-mines/best.json`
 //! under its data folder. Each game gets a folder of its own for that
@@ -9,6 +11,11 @@
 //! the game says what they have to beat and writes a time down only when
 //! it's beaten; the board takes in what it wrote when the door ends. A
 //! guest's times are theirs alone, and go nowhere.
+//!
+//! Dungeon keeps a game its player SAVEs in `dsave.dat` where it runs. A
+//! member's runs in a folder of their own under the board's saves, so
+//! RESTORE finds it on another call; a guest's in one of the call's,
+//! removed when the game ends.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -53,19 +60,24 @@ pub fn clock(secs: f64) -> String {
     format!("{}:{:02}.{}", tenths / 600, tenths / 10 % 60, tenths % 10)
 }
 
-/// A new folder for one game's data, unlike any other's: the call's
-/// number and a random tag, in the system's temporary folder (the
+/// A new folder for one game's data, unlike any other's: the game, the
+/// call's number and a random tag, in the system's temporary folder (the
 /// container's tmpfs).
-fn game_folder(call: u64) -> io::Result<PathBuf> {
+fn game_folder(game: &str, call: u64) -> io::Result<PathBuf> {
     let tag = data_encoding::HEXLOWER.encode(&crypto::random::<8>());
-    let folder = std::env::temp_dir().join(format!("anie-bbs-mines-{call}-{tag}"));
-    // Its owner's alone, where there are owners.
-    #[cfg_attr(not(unix), allow(unused_mut))]
+    let folder = std::env::temp_dir().join(format!("anie-bbs-{game}-{call}-{tag}"));
+    own_folder(false).create(&folder)?;
+    Ok(folder)
+}
+
+/// Makes folders that are their owner's alone, where there are owners
+/// (and the folders above them, where `above`).
+fn own_folder(above: bool) -> fs::DirBuilder {
     let mut builder = fs::DirBuilder::new();
+    builder.recursive(above);
     #[cfg(unix)]
     std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
-    builder.create(&folder)?;
-    Ok(folder)
+    builder
 }
 
 impl Session<'_> {
@@ -73,6 +85,7 @@ impl Session<'_> {
         let items = [
             Item::new('m', "Mines: clear the field, beat the board's best"),
             Item::new('l', "The Mines leaderboard"),
+            Item::new('d', "Dungeon: the mainframe original of Zork (1980)"),
             Item::new('n', "Neko, the cat that chases your pointer"),
             Item::new('b', "Back"),
         ];
@@ -84,7 +97,8 @@ impl Session<'_> {
             match chosen {
                 0 => self.mines()?,
                 1 => self.leaderboard()?,
-                2 => self.neko()?,
+                2 => self.dungeon()?,
+                3 => self.neko()?,
                 _ => return Ok(()),
             }
             if self.call.hung_up() {
@@ -107,6 +121,39 @@ impl Session<'_> {
         Ok(())
     }
 
+    /// A game of Dungeon: a member's in their own folder of saves, kept, a
+    /// guest's in one of the call's, gone when it ends.
+    fn dungeon(&mut self) -> io::Result<()> {
+        self.doing("Playing Dungeon");
+        let member = self.me.as_ref().map(|m| m.id);
+        let folder = match member {
+            Some(id) => {
+                let folder = self.bbs.settings.saves.join("dungeon").join(id.to_string());
+                own_folder(true).create(&folder).map(|_| folder)
+            }
+            None => game_folder("dungeon", self.id),
+        };
+        let played = folder.and_then(|folder| {
+            self.call.clear()?;
+            let kept = if member.is_some() { "SAVE keeps your game here for next time, and RESTORE takes it up." } else { "A guest's game isn't kept: members can SAVE theirs for next time." };
+            self.call.say(&format!(" {DIM}Dungeon, from MIT in 1980. HELP and INFO tell you more; QUIT leaves.\n {kept}{PLAIN}\n\n"))?;
+            let mut door = Door::new(self.bbs.settings.dungeon.clone(), Vec::<String>::new());
+            door.dir = Some(folder.clone());
+            let ran = self.call.door(&door);
+            if member.is_none() {
+                let _ = fs::remove_dir_all(&folder);
+            }
+            ran
+        });
+        self.after_door()?;
+        if let Err(e) = played {
+            eprintln!("anie-bbs: door dungeon: {e}");
+            ui::oops(self.call, "Dungeon isn't here just now. Please try again later.")?;
+            self.pause()?;
+        }
+        Ok(())
+    }
+
     /// Whatever a door left: plain colors, and the cursor back.
     fn after_door(&mut self) -> io::Result<()> {
         if self.call.hung_up() {
@@ -123,7 +170,7 @@ impl Session<'_> {
             Some(id) => self.db.query("SELECT size, seconds FROM mines_best WHERE member_id = $1", &[&id]).db()?.iter().map(|r| (r.get(0), r.get(1))).collect(),
             None => BTreeMap::new(),
         };
-        let played = game_folder(self.id).and_then(|folder| {
+        let played = game_folder("mines", self.id).and_then(|folder| {
             let file = folder.join("flow-mines").join("best.json");
             let ran = self.play_mines(&folder, &file, &before);
             let after = bests(&file);

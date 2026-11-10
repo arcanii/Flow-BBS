@@ -11,7 +11,8 @@
 //! the bulletin, the log). Guests and members alike have the game room
 //! (experimental): Mines (the door `flow-mines`), its members' best times
 //! a leaderboard they share, and Neko (the door `flow-cat`); and the
-//! demonstrations, a gallery of what Flow draws.
+//! demonstrations of what Flow draws: a gallery, Newell's teapot, a
+//! hypercube, a room lit by lamps of its own, and a page of type.
 
 pub mod crypto;
 pub mod db;
@@ -23,6 +24,7 @@ mod account;
 mod demo;
 mod forums;
 mod games;
+mod models;
 mod session;
 mod sysop;
 mod tracker;
@@ -53,7 +55,8 @@ pub struct Bbs {
     next_call: AtomicU64,
 }
 
-/// The screens from the board's folder.
+/// The screens from the board's folder, the demonstrations' models made in
+/// code (`models`).
 pub struct Screens {
     pub welcome: Screen,
     /// Over a member's menu.
@@ -61,13 +64,33 @@ pub struct Screens {
     pub about: Screen,
     pub rules: Screen,
     pub games: Screen,
+    /// Over the demonstrations' menu, and each of them.
+    pub demos: Screen,
     pub gallery: Screen,
+    pub teapot: Screen,
+    pub hypercube: Screen,
+    pub lamps: Screen,
+    pub type_page: Screen,
 }
 
 impl Screens {
     pub fn read(folder: &std::path::Path) -> io::Result<Screens> {
-        let one = |name: &str| Screen::read(&folder.join(format!("{name}.txt")), folder);
-        Ok(Screens { welcome: one("welcome")?, main: one("main")?, about: one("about")?, rules: one("rules")?, games: one("games")?, gallery: one("gallery")? })
+        let made = models::made();
+        let made: Vec<(&str, &[u8])> = made.iter().map(|(name, bytes)| (*name, bytes.as_slice())).collect();
+        let one = |name: &str| Screen::read_with(&folder.join(format!("{name}.txt")), folder, &made);
+        Ok(Screens {
+            welcome: one("welcome")?,
+            main: one("main")?,
+            about: one("about")?,
+            rules: one("rules")?,
+            games: one("games")?,
+            demos: one("demos")?,
+            gallery: one("gallery")?,
+            teapot: one("teapot")?,
+            hypercube: one("hypercube")?,
+            lamps: one("lamps")?,
+            type_page: one("type")?,
+        })
     }
 }
 

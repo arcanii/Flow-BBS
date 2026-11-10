@@ -16,7 +16,7 @@ be signed from there.
 | `/root/anie-bbs/flow-games-key` | The deploy key that reads arcanii/Flow-Games (private), for `flow-mines`: made on the box, never leaves it; read-only on GitHub |
 | `/root/anie-bbs/flow-games` | The clone of Flow-Games, root's, at the commit on `master` that `11-games-clone.sh` names: the image's second context |
 | `/root/anie-bbs/backups/` | Nightly `pg_dump`s, fourteen days |
-| volumes `anie-bbs_db`, `anie-bbs_home` | The database; the board's SSH host key |
+| volumes `anie-bbs_db`, `anie-bbs_home` | The database; the board's SSH host key, and members' saved games (`saves/`, Dungeon's under `saves/dungeon/<member>`) |
 | `127.0.0.1:5440` | PostgreSQL, the box's loopback only |
 | `0.0.0.0:2222` | The board (the host's network, so ufw decides who reaches it) |
 | `arcanii.dynu.net:50768` | The board from the internet: the router forwards it to 192.168.50.210:2222 |

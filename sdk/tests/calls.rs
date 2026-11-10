@@ -70,7 +70,10 @@ fn screens(call: &mut Call) -> std::io::Result<()> {
     loop {
         match call.menu(None, &[], &items)? {
             Some(0) => {
-                let door = flow_bbs::Door::new("/bin/sh", ["-c", "printf 'door %s %s\\n' \"${TERM_PROGRAM:-none}\" \"$TERM\"; stty size; read line; echo \"got $line\"; exit 3"]);
+                // Cargo gives the server (this test) its package's name; a
+                // door gets none of the server's variables but PATH and the
+                // like.
+                let door = flow_bbs::Door::new("/bin/sh", ["-c", "printf 'door %s %s %s %s\\n' \"${TERM_PROGRAM:-none}\" \"$TERM\" \"${CARGO_PKG_NAME:-clean}\" \"${PATH:+path}\"; stty size; read line; echo \"got $line\"; exit 3"]);
                 let code = call.door(&door)?;
                 call.say(&format!("door ended {code:?}\n"))?;
             }
@@ -199,7 +202,7 @@ async fn a_door_runs_on_a_pty_of_the_calls_own_with_flows_variables_and_hands_th
     heard(&mut line, MENU_KEYS).await;
     line.data(&b"D"[..]).await.unwrap();
     let said = heard(&mut line, "30 100").await;
-    assert!(said.contains("door flow-terminal xterm-256color"), "{said:?}");
+    assert!(said.contains("door flow-terminal xterm-256color clean path"), "Flow's variables, the caller's TERM, PATH, and nothing of the server's: {said:?}");
     line.data(&b"hello\r"[..]).await.unwrap();
     let said = heard(&mut line, MENU_KEYS).await;
     assert!(said.contains("got hello"), "{said:?}");

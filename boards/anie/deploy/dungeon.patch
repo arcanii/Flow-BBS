@@ -1,0 +1,30 @@
+diff --git a/np.c b/np.c
+index a0ab931..083b613 100644
+--- a/np.c
++++ b/np.c
+@@ -38,10 +38,7 @@ L90:
+ 	exit_();
+     more_input();
+ 
+-    if (buffer[0] == '!') {
+-	system(buffer + 1);
+-	goto L5;
+-    }
++/* A line starting ! went to the shell here: not on a board anyone may call. */
+ 
+     zlast = buffer - 1;
+     for (z = buffer; *z != '\0' && *z != '\n'; z++) {
+@@ -191,6 +188,13 @@ logical vbflag;
+ L50:
+     *op += 2;
+ /* 						!ADV OUTPUT PTR. */
++    if (*op > 39) {
++/* 						!OUTBUF HOLDS 20 WORDS: THE REST OF THE LINE IS IGNORED. */
++	*op += -2;
++	while (inbuf[prsvec_1.prscon] != '\0')
++	    ++prsvec_1.prscon;
++	goto L1000;
++    }
+     cp = 0;
+ /* 						!CHAR PTR=0. */
+ 

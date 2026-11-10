@@ -1,0 +1,9 @@
+{bold}{bright-cyan}The teapot{/}{sound chime}
+{dim}Martin Newell's teapot, from Utah in 1975: the shape every renderer drew{/}
+{dim}first, and OpenGL's GLUT drew as glutSolidTeapot. Thirty-two curved patches,{/}
+{dim}glazed white.{/}
+
+![The Utah teapot, glazed white, turning](made/teapot.glb){rows 14}
+
+{in flow}{dim}The board works out its curves; Flow lights it and turns it, here on its own.{/}
+{not in flow}{dim}In Flow the teapot turns here; elsewhere you see its name.{/}

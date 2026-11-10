@@ -50,12 +50,14 @@ ssh -p 2222 guest@localhost             # call it
   50 ms for the rest of a sequence.
 - `sdk/src/screen.rs`: `Screen`, its marks (`{user}`, the sixteen colors,
   `{sound …}`, `{fx …}`), its picture and model lines (`{rows N}` after
-  one), lines for Flow alone or for others (`{in flow}`, `{not in flow}`),
-  and
+  one; a file of the board's folder, or one the board made, by name, for
+  `read_with`), lines for Flow alone or for others (`{in flow}`,
+  `{not in flow}`), and
   `Call::show`, which clears the screen, forgets the last screen's
   pictures and models (each call's ids its own), and places pictures by
-  placeholder cells and models over the rows it makes room for. A caller
-  not in Flow gets the words in brackets.
+  placeholder cells and models over the rows it makes room for, turned
+  by Flow (`animate=1`) unless a glTF has an animation of its own
+  (`moves_itself`). A caller not in Flow gets the words in brackets.
 - `sdk/src/menu.rs`: `Item`, `Call::menu` and `menu_titled` (the items in
   a frame, a bar the arrows move and Enter takes, or a key at once;
   Ctrl+C and Ctrl+D hang up; a resize draws it again; `MENU_KEYS` says
@@ -63,7 +65,9 @@ ssh -p 2222 guest@localhost             # call it
   frame room under a screen's pictures.
 - `sdk/src/door.rs`: `Door` and `Call::door`, on portable-pty: the
   caller's keys to the pty, its output to the caller from a thread of its
-  own, resizes passed on, Flow's variables set or taken out.
+  own, resizes passed on, Flow's variables set; the server's own
+  environment cleared but for `KEPT` (`PATH`, `HOME`, the locale), so a
+  board's secrets never reach a door.
 - `server/src/main.rs`: `flow-bbsd`, reading `board.toml` (menus, items,
   doors; every name checked at the start) and running a call through its
   menus.
@@ -84,11 +88,21 @@ ssh -p 2222 guest@localhost             # call it
   PostgreSQL (the sync `postgres` crate, a connection a call):
   `account.rs` (applying, emailed codes, the authenticator, logins,
   recovery, profile), `forums.rs`, `tracker.rs`, `sysop.rs`, `games.rs`
-  (the game room: Neko's door, `ANIE_BBS_NEKO`, and Mines',
+  (the game room: Neko's door, `ANIE_BBS_NEKO`; Mines',
   `ANIE_BBS_MINES`, each game given a data folder of its own whose
   `flow-mines/best.json` is taken in after for the leaderboard,
-  `mines_best`), `demo.rs` (the gallery; the pictures, Ánië's logo
-  among them, in `screens/pictures`), `crypto.rs`
+  `mines_best`; and Dungeon's, `ANIE_BBS_DUNGEON`, run in a member's own
+  folder under `ANIE_BBS_SAVES` so its SAVE keeps, a guest's in one of
+  the call's; `deploy/Dockerfile` builds it from devshane/zork at a
+  pinned commit with `deploy/dungeon.patch`, which takes out its `!`
+  shell escape and bounds its parser's words, and without GDT),
+  `demo.rs` (the demonstrations' menu; the pictures,
+  Ánië's logo among them, in `screens/pictures`, and `type.png` set
+  from `type.svg` by Inkscape), `models/` (the GLBs the demonstrations
+  show, made in code and named `made/…` in their screens: `glb.rs`, a
+  writer of smooth surfaces, materials, point lights and a looped
+  animation; `teapot.rs`, GLUT's patches of Newell's teapot;
+  `hypercube.rs`; `lamps.rs`), `crypto.rs`
   (United One's rules for codes), `mail.rs` (Gmail by SMTP), `db.rs`
   (migrations in `migrations/`, errors logged by SQLSTATE only). What a
   caller is told never says which part of a login was wrong, or whether

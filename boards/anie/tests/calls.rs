@@ -36,6 +36,10 @@ struct Board {
     mail: Arc<Memory>,
     name: String,
     base: String,
+    /// Where members' games are kept between calls (read by a test of
+    /// Unix's).
+    #[cfg_attr(not(unix), allow(dead_code))]
+    saves: std::path::PathBuf,
 }
 
 impl Board {
@@ -57,7 +61,7 @@ impl Board {
         let url = format!("{}/{name}", base.rsplit_once('/').unwrap().0);
         let dir = std::env::temp_dir().join(&name);
         std::fs::create_dir_all(&dir).unwrap();
-        let mines = stand_in_for_mines(&dir);
+        let (mines, dungeon) = (stand_in_for_mines(&dir), stand_in_for_dungeon(&dir));
         let env = [
             ("ANIE_BBS_DATABASE_URL", url.clone()),
             ("ANIE_BBS_SECRET_KEY", KEY.into()),
@@ -67,6 +71,8 @@ impl Board {
             // A door that ends at once, standing in for flow-cat.
             ("ANIE_BBS_NEKO", if cfg!(windows) { "hostname" } else { "true" }.into()),
             ("ANIE_BBS_MINES", mines),
+            ("ANIE_BBS_DUNGEON", dungeon),
+            ("ANIE_BBS_SAVES", dir.join("saves").display().to_string()),
         ];
         let (settings, _) = Settings::from_lookup(|k| env.iter().find(|(n, _)| *n == k).map(|(_, v)| v.clone())).unwrap();
         let mail = Arc::new(Memory::default());
@@ -75,7 +81,7 @@ impl Board {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         std::thread::spawn(move || anie_bbs::serve(bbs, Some(listener)));
-        Some(Board { address, url, mail, name, base })
+        Some(Board { address, url, mail, name, base, saves: dir.join("saves") })
     }
 
     /// Does `f` with the board's database.
@@ -131,6 +137,37 @@ fn stand_in_for_mines(dir: &std::path::Path) -> String {
          read secs\n\
          mkdir -p \"$XDG_DATA_HOME/flow-mines\"\n\
          printf '{\"Small\": %s}' \"$secs\" > \"$kept\"\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    script.display().to_string()
+}
+
+/// A stand-in for Dungeon: says where it runs and whether it has the
+/// server's variables, takes up a game kept there, and keeps one on
+/// SAVE, until QUIT. On Windows, a program that ends.
+fn stand_in_for_dungeon(dir: &std::path::Path) -> String {
+    if cfg!(windows) {
+        return "hostname".into();
+    }
+    let script = dir.join("dungeon.sh");
+    std::fs::write(
+        &script,
+        "#!/bin/sh\n\
+         printf 'dungeon in %s, %s\\n' \"$PWD\" \"${CARGO_PKG_NAME:-clean}\"\n\
+         [ -f dsave.dat ] && printf 'restored: %s\\n' \"$(cat dsave.dat)\"\n\
+         printf '>'\n\
+         while read cmd; do\n\
+           case \"$cmd\" in\n\
+             save*) printf 'kept at %s' \"$cmd\" > dsave.dat; printf 'Saved.\\n>';;\n\
+             quit*) exit 0;;\n\
+             *) printf 'Huh?\\n>';;\n\
+           esac\n\
+         done\n",
     )
     .unwrap();
     #[cfg(unix)]
@@ -527,11 +564,18 @@ impl Caller {
 }
 
 #[tokio::test]
-async fn a_guest_finds_the_gallery_and_the_game_room_where_neko_and_mines_hand_the_call_back() {
+async fn a_guest_finds_the_demonstrations_and_the_game_room_where_neko_mines_and_dungeon_hand_the_call_back() {
     let Some(board) = Board::new("games") else { return };
     let mut guest = Caller::dial(&board).await;
 
     guest.send("d").await;
+    let text = plain(&guest.until(MENU_KEYS).await);
+    assert!(text.contains("╭─ Demonstrations ─"), "{text:?}");
+    for item in ["G  The gallery", "T  The teapot, as OpenGL drew it", "H  A hypercube, turning", "L  Light sources", "F  Typeset fonts", "B  Back"] {
+        assert!(text.contains(item), "{item:?} in {text:?}");
+    }
+
+    guest.send("g").await;
     let said = guest.go_on().await;
     assert!(said.contains("_Ga=T"), "the picture, sent to Flow: {said:?}");
     assert!(said.contains("_ratty;g;r;id="), "the crystal, registered");
@@ -539,11 +583,29 @@ async fn a_guest_finds_the_gallery_and_the_game_room_where_neko_and_mines_hand_t
     assert!(!said.contains("[Flow BBS, a picture]"), "no words in brackets for Flow");
     guest.until(MENU_KEYS).await;
 
+    // The models the board makes: each moves itself, so Flow isn't asked
+    // to turn it as well.
+    for (key, name) in [("t", "The Utah teapot"), ("h", "A hypercube turning"), ("l", "Three colored lamps")] {
+        guest.send(key).await;
+        let said = guest.go_on().await;
+        assert!(said.contains(&format!("name={name}")), "{name}, registered");
+        let placed = &said[said.find("_ratty;g;p;").expect("placed")..];
+        let placed = &placed[..placed.find('\x1b').unwrap()];
+        assert!(!placed.contains("animate"), "{name} moves itself: {placed:?}");
+        guest.until(MENU_KEYS).await;
+    }
+    guest.send("f").await;
+    let said = guest.go_on().await;
+    assert!(said.contains("_Ga=T") && !said.contains("[A page of type"), "the page of type, a picture: {said:.300}");
+    guest.until(MENU_KEYS).await;
+    guest.send("b").await;
+    guest.until(MENU_KEYS).await;
+
     guest.send("g").await;
     let said = guest.until(MENU_KEYS).await;
     let text = plain(&said);
     assert!(text.contains("The game room") && text.contains("╭─ Game room ─"), "{text:?}");
-    for item in ["M  Mines: clear the field", "L  The Mines leaderboard", "N  Neko, the cat that chases your pointer", "B  Back"] {
+    for item in ["M  Mines: clear the field", "L  The Mines leaderboard", "D  Dungeon: the mainframe original", "N  Neko, the cat that chases your pointer", "B  Back"] {
         assert!(text.contains(item), "{item:?} in {text:?}");
     }
 
@@ -569,10 +631,66 @@ async fn a_guest_finds_the_gallery_and_the_game_room_where_neko_and_mines_hand_t
     let said = plain(&guest.go_on().await);
     assert!(said.contains("The Mines leaderboard") && said.contains("No times yet: be the first."), "{said:?}");
     guest.until(MENU_KEYS).await;
+
+    // A guest's Dungeon runs in a folder of the call's, which goes when the
+    // game ends; and like every door it has none of the board's variables.
+    guest.send("d").await;
+    guest.door_opened().await;
+    if cfg!(unix) {
+        let said = plain(&guest.until(", clean\r\n").await);
+        assert!(said.contains("A guest's game isn't kept"), "{said:?}");
+        let folder = said.rsplit("dungeon in ").next().unwrap().trim_end_matches(", clean\r\n").to_string();
+        assert!(folder.contains("anie-bbs-dungeon-"), "{folder:?}");
+        guest.send("save\r").await;
+        guest.until("Saved.").await;
+        guest.send("quit\r").await;
+        guest.until(MENU_KEYS).await;
+        assert!(!std::path::Path::new(&folder).exists(), "a guest's game isn't kept: {folder}");
+    } else {
+        guest.until(MENU_KEYS).await;
+    }
+
     guest.send("b").await;
     guest.until(MENU_KEYS).await;
     guest.send("q").await;
     guest.until("Goodbye.").await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_members_dungeon_is_kept_in_a_folder_of_their_own_and_taken_up_on_another_call() {
+    let Some(board) = Board::new("dungeon") else { return };
+    let seed = crypto::new_seed();
+    let id = board.member("cleo", "cleo's long password", &seed, "member");
+    let mut step = crypto::step_now().saturating_sub(1);
+
+    let mut cleo = Caller::dial(&board).await;
+    cleo.log_in("cleo", "cleo's long password", &next_code(&seed, &mut step).await).await;
+    cleo.send("g").await;
+    cleo.until(MENU_KEYS).await;
+    cleo.send("d").await;
+    let said = plain(&cleo.until(", clean\r\n").await);
+    assert!(said.contains("SAVE keeps your game here for next time"), "{said:?}");
+    let mine = board.saves.join("dungeon").join(id.to_string());
+    assert!(said.contains(&format!("dungeon in {}", mine.display())), "in her own folder, {}: {said:?}", mine.display());
+    cleo.send("save\r").await;
+    cleo.until("Saved.").await;
+    cleo.send("quit\r").await;
+    cleo.until(MENU_KEYS).await;
+    assert!(mine.join("dsave.dat").exists(), "her game, kept");
+    use std::os::unix::fs::PermissionsExt;
+    assert_eq!(std::fs::metadata(&mine).unwrap().permissions().mode() & 0o777, 0o700, "the board's alone");
+
+    // On another call, the game she kept is there to take up.
+    let mut again = Caller::dial(&board).await;
+    again.log_in("cleo", "cleo's long password", &next_code(&seed, &mut step).await).await;
+    again.send("g").await;
+    again.until(MENU_KEYS).await;
+    again.send("d").await;
+    let said = again.until("\r\n>").await;
+    assert!(said.contains("restored: kept at save"), "{said:?}");
+    again.send("quit\r").await;
+    again.until(MENU_KEYS).await;
 }
 
 #[cfg(unix)]
