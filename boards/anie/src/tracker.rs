@@ -157,7 +157,7 @@ impl Session<'_> {
             Preview::Lines(lines)
         };
         let hint = "What happens: what you did, what you expected, and what happened instead.";
-        let Some(description) = ui::editor(self.call, &format!("Bug: {title}"), hint, "", Some(&seen))? else { return Ok(()) };
+        let Some(description) = ui::editor(self.call, &format!("Bug: {title}"), hint, "", Some(&seen), None)? else { return Ok(()) };
         let id: i64 = self
             .db
             .query_one("INSERT INTO bugs (product_id, title, description, severity, reporter_id) VALUES ($1, $2, $3, $4, $5) RETURNING id", &[&product, &title, &description, &sev, &me.id])
@@ -247,7 +247,7 @@ impl Session<'_> {
                 Pick::Letter('q') => return Ok(()),
                 Pick::Letter('c') => {
                     let seen = |call: &Call, text: &str| ui::as_posted(call, &me.handle, text);
-                    if let Some(body) = ui::editor(self.call, &format!("A comment on bug #{id}"), "", "", Some(&seen))? {
+                    if let Some(body) = ui::editor(self.call, &format!("A comment on bug #{id}"), "", "", Some(&seen), None)? {
                         self.db.execute("INSERT INTO bug_comments (bug_id, author_id, body) VALUES ($1, $2, $3)", &[&id, &me.id, &body]).db()?;
                         self.db.execute("UPDATE bugs SET updated_at = now() WHERE id = $1", &[&id]).db()?;
                     }

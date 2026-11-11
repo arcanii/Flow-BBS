@@ -233,7 +233,7 @@ impl Session<'_> {
                             self.pause()?;
                         } else {
                             let seen = |call: &Call, text: &str| ui::as_posted(call, &me.handle, text);
-                            if let Some(new) = ui::editor(self.call, &format!("Your post in {}", thread.title), "", &body, Some(&seen))? {
+                            if let Some(new) = ui::editor(self.call, &format!("Your post in {}", thread.title), "", &body, Some(&seen), None)? {
                                 self.db.execute("UPDATE posts SET body = $2, edited_at = now() WHERE id = $1 AND author_id = $3", &[&post_id, &new, &me.id]).db()?;
                             }
                         }
@@ -284,7 +284,7 @@ impl Session<'_> {
         };
         let me = self.me().clone();
         let seen = |call: &Call, text: &str| ui::as_posted(call, &me.handle, text);
-        let Some(body) = ui::editor(self.call, &format!("{} › {title}", forum.name), "Your first post", "", Some(&seen))? else { return Ok(()) };
+        let Some(body) = ui::editor(self.call, &format!("{} › {title}", forum.name), "Your first post", "", Some(&seen), None)? else { return Ok(()) };
         let mut t = self.db.transaction().db()?;
         let thread: i64 = t.query_one("INSERT INTO threads (forum_id, title, author_id) VALUES ($1, $2, $3) RETURNING id", &[&forum.id, &title, &me.id]).db()?.get(0);
         let post: i64 = t.query_one("INSERT INTO posts (thread_id, author_id, body) VALUES ($1, $2, $3) RETURNING id", &[&thread, &me.id, &body]).db()?.get(0);
@@ -301,7 +301,7 @@ impl Session<'_> {
         self.doing("Writing in the forums");
         let me = self.me().clone();
         let seen = |call: &Call, text: &str| ui::as_posted(call, &me.handle, text);
-        let Some(body) = ui::editor(self.call, &format!("Your reply to {}", thread.title), "", "", Some(&seen))? else { return Ok(()) };
+        let Some(body) = ui::editor(self.call, &format!("Your reply to {}", thread.title), "", "", Some(&seen), None)? else { return Ok(()) };
         let mut t = self.db.transaction().db()?;
         // Locked meanwhile: the reply waits for staff to unlock it.
         let open = t.query_opt("SELECT 1 FROM threads WHERE id = $1 AND NOT locked AND NOT deleted FOR UPDATE", &[&thread.id]).db()?.is_some();

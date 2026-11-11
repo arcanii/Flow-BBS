@@ -93,8 +93,13 @@ ssh -p 2222 guest@localhost             # call it
   A preview is the board's (`Draft::preview`, a `Previewer` giving a
   `Preview`: lines it scrolls, or a `Screen` and lines under it), else
   the text wrapped to the window; any key but the scrolling ones goes
-  back. `Text` is the text and the cursor, pure; `Editor` draws only the
-  rows that changed, and nothing while keys wait.
+  back. Where the board draws it as it's written (`Draft::live`, a
+  `LiveView` giving a `Live`: a PNG and its rows, or words), a pane
+  shows it beside the text (half a window of 96 cells or more, to 82) or
+  under it, drawn again once keys stop for 200 ms (`Call::key_within`),
+  the new picture in before the old one goes. `Text` is the text and the
+  cursor, pure; `Editor` lays the window out and draws only the rows that
+  changed, and nothing while keys wait.
   `server.rs` also turns away connections past `max_calls` (and per
   address) before they log in, and gives each `Call` its `address`.
 - `boards/anie`: `anie-bbs`, the Anie Solutions BBS, a board in code on
@@ -126,7 +131,9 @@ ssh -p 2222 guest@localhost             # call it
   bug reports, comments and the bulletin are written in the SDK's
   editor (`ui::editor`), each previewed as its page shows it (a post or a
   comment under its author, `ui::as_posted`; the bulletin by
-  `session::bulletin_page`, typeset where it can be). What a
+  `session::bulletin_page`, typeset where it can be), and the bulletin
+  typeset beside it as it's written, in Flow (`session::bulletin_card`,
+  the card a member with the sysop's window would see). What a
   caller is told never says which part of a login was wrong, or whether
   an address is a member's. `deploy/`: its Dockerfile, compose file, and
   the signed scripts that run it on tkaniedev03 (`deploy/README.md`).

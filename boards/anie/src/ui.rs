@@ -6,7 +6,7 @@
 
 use std::io;
 
-use flow_bbs::{printable, Call, Draft, Preview, Previewer};
+use flow_bbs::{printable, Call, Draft, LiveView, Preview, Previewer};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub const BOLD: &str = "\x1b[1m";
@@ -152,9 +152,10 @@ pub const MESSAGE_BYTES: usize = 16 * 1024;
 
 /// A message written full-screen in the SDK's editor, titled `title`
 /// with `hint` under it, starting from `start`, previewed (Ctrl+P) as
-/// `preview` shows it: `None` if it's given up (or they hang up).
-pub fn editor(call: &mut Call, title: &str, hint: &str, start: &str, preview: Option<Previewer>) -> io::Result<Option<String>> {
-    call.edit(&Draft { title, hint, text: start, max_lines: MESSAGE_LINES, max_bytes: MESSAGE_BYTES, preview })
+/// `preview` shows it, and beside it as it's written as `live` draws it:
+/// `None` if it's given up (or they hang up).
+pub fn editor(call: &mut Call, title: &str, hint: &str, start: &str, preview: Option<Previewer>, live: Option<LiveView>) -> io::Result<Option<String>> {
+    call.edit(&Draft { title, hint, text: start, max_lines: MESSAGE_LINES, max_bytes: MESSAGE_BYTES, preview, live })
 }
 
 /// A preview of `text` as the forums and the tracker show what someone

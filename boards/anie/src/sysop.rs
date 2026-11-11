@@ -8,7 +8,7 @@
 
 use std::io;
 
-use flow_bbs::{printable, Call, Item, Preview};
+use flow_bbs::{printable, Call, Item, Live, LiveView, Preview};
 
 use crate::db::{Db, Role};
 use crate::forums::{pick, Pick};
@@ -16,6 +16,9 @@ use crate::session::Session;
 use crate::ui::{self, BOLD, CYAN, DIM, PLAIN, YELLOW};
 
 const ROLES: [&str; 3] = ["member", "staff", "sysop"];
+
+/// What the bulletin's pane says where no card fits the sysop's window.
+const NO_CARD: &str = "No card fits a window this size, so members with one like it get the bulletin as text.";
 
 impl Session<'_> {
     pub fn sysop(&mut self) -> io::Result<()> {
@@ -355,7 +358,14 @@ impl Session<'_> {
             Some(page) => Preview::Screen(page, Vec::new()),
             None => Preview::Lines(crate::typeset::text(text, ui::window(call).0.saturating_sub(4))),
         };
-        if let Some(text) = ui::editor(self.call, "The bulletin", hint, &now, Some(&seen))? {
+        // And typeset beside it as it's written, the card a member with a
+        // window like the sysop's would see, where Flow shows one.
+        let card = |call: &Call, text: &str| match crate::session::bulletin_card(bbs, call, text, 2) {
+            Some(card) => Live::Picture { png: card.png.clone(), rows: card.rows },
+            None => Live::Words(NO_CARD.to_string()),
+        };
+        let live = (self.call.is_flow() && bbs.typeset.is_some()).then_some(&card as LiveView);
+        if let Some(text) = ui::editor(self.call, "The bulletin", hint, &now, Some(&seen), live)? {
             self.db.execute("INSERT INTO settings (key, value) VALUES ('bulletin', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value", &[&text]).db()?;
             self.audit(None, "bulletin changed", "")?;
         }

@@ -72,6 +72,15 @@ pub(crate) enum Out {
     End(u32),
 }
 
+/// What came of waiting a while for a key.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Heard {
+    Key(Key),
+    /// None came in time.
+    Quiet,
+    HungUp,
+}
+
 /// One caller on the board.
 pub struct Call {
     user: String,
@@ -202,6 +211,30 @@ impl Call {
                 },
             }
         }
+    }
+
+    /// The next key, where the caller presses one within `wait` of being
+    /// asked, keys already in counting at once: for a board that does
+    /// something once they stop typing a while.
+    pub(crate) fn key_within(&mut self, wait: Duration) -> io::Result<Heard> {
+        if self.pending.is_empty() {
+            match self.events.recv_timeout(wait) {
+                Ok(event) => {
+                    if let Some(k) = self.take(event) {
+                        return Ok(Heard::Key(k));
+                    }
+                }
+                Err(RecvTimeoutError::Timeout) => return Ok(Heard::Quiet),
+                Err(RecvTimeoutError::Disconnected) => {
+                    self.hang_up();
+                    return Ok(Heard::HungUp);
+                }
+            }
+        }
+        Ok(match self.key()? {
+            Some(k) => Heard::Key(k),
+            None => Heard::HungUp,
+        })
     }
 
     /// Takes in what the server heard: bytes wait in `pending`, a resize is

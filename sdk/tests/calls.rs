@@ -43,6 +43,15 @@ fn serving(board: impl flow_bbs::Board) -> SocketAddr {
     address
 }
 
+/// A 64 × 32 PNG's first bytes: enough to say its size.
+fn png() -> Vec<u8> {
+    let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
+    png.extend(64u32.to_be_bytes());
+    png.extend(32u32.to_be_bytes());
+    png.extend([8, 2, 0, 0, 0]);
+    png
+}
+
 /// A folder with a 64 × 32 PNG and a model, for screens to show: written
 /// once, since the tests' calls run at once and read it.
 fn pictures() -> std::path::PathBuf {
@@ -50,11 +59,7 @@ fn pictures() -> std::path::PathBuf {
     MADE.get_or_init(|| {
         let dir = std::env::temp_dir().join(format!("flow-bbs-pictures-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let mut png = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
-        png.extend(64u32.to_be_bytes());
-        png.extend(32u32.to_be_bytes());
-        png.extend([8, 2, 0, 0, 0]);
-        std::fs::write(dir.join("p.png"), png).unwrap();
+        std::fs::write(dir.join("p.png"), png()).unwrap();
         std::fs::write(dir.join("m.obj"), "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n").unwrap();
         dir
     })
@@ -255,6 +260,16 @@ fn edits(call: &mut Call) -> std::io::Result<()> {
     Ok(())
 }
 
+/// A board whose caller writes beside a pane of what they've written: a
+/// picture of it, or for "words", words.
+fn lively(call: &mut Call) -> std::io::Result<()> {
+    let live = |_: &Call, text: &str| if text == "words" { flow_bbs::Live::Words("just words".into()) } else { flow_bbs::Live::Picture { png: png(), rows: 4 } };
+    let draft = flow_bbs::Draft { live: Some(&live), ..flow_bbs::Draft::new("Live") };
+    let got = call.edit(&draft)?;
+    call.say(&format!("got {got:?}\n"))?;
+    Ok(())
+}
+
 /// What the board says up to and including `until`, what came after it
 /// kept in `buf` for the next.
 async fn upto(channel: &mut russh::Channel<client::Msg>, buf: &mut String, until: &str) -> String {
@@ -299,5 +314,34 @@ async fn a_caller_edits_full_screen_saving_with_ctrl_s_and_leaving_without_savin
     line.data(&b"n"[..]).await.unwrap();
     let said = upto(&mut line, &mut buf, "then None").await;
     assert!(said.contains("\x1b[2J"), "the screen left clear: {said:?}");
+    assert_eq!(ended(&mut line).await, Some(0));
+}
+
+#[tokio::test]
+async fn a_pane_beside_the_text_shows_what_the_board_draws_of_it_each_time_the_typing_stops() {
+    let mut line = dial(serving(lively), &[("TERM_PROGRAM", "flow-terminal")]).await;
+    let mut buf = String::new();
+    let said = upto(&mut line, &mut buf, flow_bbs::EDIT_KEYS).await;
+    assert!(said.contains("│"), "a rule between the text and the pane: {said:?}");
+    let said = upto(&mut line, &mut buf, "nothing to preview yet").await;
+    assert!(said.contains("As its readers will see it"), "{said:?}");
+    // Typed, and once the typing stops, a picture of it in the pane.
+    line.data(&b"hello"[..]).await.unwrap();
+    upto(&mut line, &mut buf, "\x1b_Ga=T").await;
+    let said = upto(&mut line, &mut buf, "\x1b[?25h").await;
+    assert!(said.contains('\u{10EEEE}') && !said.contains("\x1b_Ga=d"), "its cells, and no picture before it to take away: {said:?}");
+    // Typed on: a new picture, the old one taken away after it's in.
+    line.data(&b" world"[..]).await.unwrap();
+    upto(&mut line, &mut buf, "\x1b_Ga=T").await;
+    let said = upto(&mut line, &mut buf, "\x1b[?25h").await;
+    let (cells, gone) = (said.find('\u{10EEEE}'), said.find("\x1b_Ga=d"));
+    assert!(cells.is_some() && gone.is_some() && cells < gone, "{said:?}");
+    // Words, where the board has no picture.
+    line.data(&b"\x0bwords"[..]).await.unwrap();
+    upto(&mut line, &mut buf, "just words").await;
+    let said = upto(&mut line, &mut buf, "\x1b[?25h").await;
+    assert!(said.contains("\x1b_Ga=d"), "the picture gone: {said:?}");
+    line.data(&b"\x13"[..]).await.unwrap();
+    upto(&mut line, &mut buf, r#"got Some("words")"#).await;
     assert_eq!(ended(&mut line).await, Some(0));
 }

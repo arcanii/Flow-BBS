@@ -51,7 +51,7 @@ use std::time::Duration;
 
 pub use call::{Call, Caller, Size, FLOW};
 pub use door::Door;
-pub use edit::{Draft, Preview, Previewer, EDIT_KEYS};
+pub use edit::{Draft, Live, LiveView, Preview, Previewer, EDIT_KEYS};
 pub use input::printable;
 pub use flow_sdk as flow;
 pub use key::Key;

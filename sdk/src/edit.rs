@@ -15,19 +15,26 @@
 //! other key goes back to writing. Ctrl+S saves; Esc leaves, asking first
 //! whether to save where anything changed.
 //!
+//! Where the board draws what's written as it's written (`Draft::live`: the
+//! bulletin typeset, for a caller in Flow), a pane beside the text shows it,
+//! or under it in a narrower window, drawn again each time the caller stops
+//! typing a moment.
+//!
 //! Only printable letters are kept, as `ask` keeps them, so nothing written
 //! can carry an escape onto another caller's screen. Only rows that
 //! changed are drawn again, and nothing while more keys wait (a paste), so
 //! a call over a slow line keeps up.
 
 use std::io;
+use std::time::Duration;
 
+use flow_sdk::picture::{self, Image};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use crate::call::Call;
+use crate::call::{Call, Heard, Shown};
 use crate::input::{keeps, printable};
 use crate::key::Key;
-use crate::screen::Screen;
+use crate::screen::{deleting, fit, png_size, Screen, CELL};
 
 /// What the editor is given: what's being written, a line saying what to
 /// write, the text to start from, how long it may grow, and how what's
@@ -48,13 +55,17 @@ pub struct Draft<'a> {
     /// shows it to its readers; where there's none, the text wrapped to the
     /// window.
     pub preview: Option<Previewer<'a>>,
+    /// What a pane beside the text shows of it as it's written, as the board
+    /// draws it (the bulletin typeset as it's typed, for a caller in Flow);
+    /// where there's none, or the window hasn't the room, there's no pane.
+    pub live: Option<LiveView<'a>>,
 }
 
 impl<'a> Draft<'a> {
     /// A draft titled `title`, empty, of at most 1,000 lines and 64 KB, its
     /// preview the text wrapped to the window.
     pub fn new(title: &'a str) -> Draft<'a> {
-        Draft { title, hint: "", text: "", max_lines: 1000, max_bytes: 64 * 1024, preview: None }
+        Draft { title, hint: "", text: "", max_lines: 1000, max_bytes: 64 * 1024, preview: None, live: None }
     }
 }
 
@@ -70,6 +81,19 @@ pub enum Preview {
     /// A screen (a picture of it, typeset, say), shown as `Call::show`
     /// shows one, and lines under it.
     Screen(Screen, Vec<String>),
+}
+
+/// How a board draws what's written for the pane beside it, given the call
+/// and the text as it would be saved.
+pub type LiveView<'a> = &'a dyn Fn(&Call, &str) -> Live;
+
+/// What the pane beside the text shows.
+pub enum Live {
+    /// A picture: a PNG, `rows` rows tall in the caller's cells as a
+    /// screen's `{rows N}` makes one, made smaller where the pane is.
+    Picture { png: Vec<u8>, rows: u16 },
+    /// Words, where there's no picture to show: dim, wrapped to the pane.
+    Words(String),
 }
 
 /// What the editor says along the bottom, so a caller knows the keys.
@@ -93,6 +117,15 @@ const NOTE: &str = "\x1b[1;33m";
 const DIM: &str = "\x1b[2m";
 const PLAIN: &str = "\x1b[0m";
 
+/// The pane: beside the text in a window this wide, taking half of it up to
+/// this many cells, else under it where the text and it get this many rows
+/// each; drawn again once keys stop this long, under this title.
+const BESIDE: usize = 96;
+const PANE_WIDEST: usize = 82;
+const PANE_FEWEST: usize = 8;
+const LIVE_WAIT: Duration = Duration::from_millis(200);
+const LIVE: &str = "As its readers will see it";
+
 /// A tab goes on to the next of these columns.
 const TAB: usize = 4;
 /// The changes kept to undo.
@@ -105,17 +138,38 @@ impl Call {
     /// hung up, which `hung_up` tells apart. The screen is left clear.
     pub fn edit(&mut self, draft: &Draft) -> io::Result<Option<String>> {
         let mut editor = Editor::new(draft);
-        self.forget()?;
         let mut all = true;
+        // What the pane shows: the text it was drawn for, and where.
+        let mut paned: Option<(String, Pane)> = None;
         loop {
+            let (cols, rows) = self.window();
             // Drawn once the keys that came together are all in.
             if all || self.pending.is_empty() {
-                let (cols, rows) = self.window();
+                if all {
+                    self.forget()?;
+                    paned = None;
+                }
                 let out = editor.draw(cols, rows, all);
                 self.send(&out)?;
                 all = false;
             }
-            let Some(key) = self.key()? else { return Ok(None) };
+            // The pane, drawn again for what's written once the keys stop.
+            let wanted = if self.pending.is_empty() { draft.live.zip(editor.layout(cols, rows).pane) } else { None };
+            let key = match wanted.map(|(live, pane)| (live, (editor.text.saved(), pane))) {
+                Some((live, now)) if paned.as_ref() != Some(&now) => match self.key_within(LIVE_WAIT)? {
+                    Heard::Key(key) => key,
+                    Heard::HungUp => return Ok(None),
+                    Heard::Quiet => {
+                        self.pane(live, &now.0, now.1, editor.cursor)?;
+                        paned = Some(now);
+                        continue;
+                    }
+                },
+                _ => match self.key()? {
+                    Some(key) => key,
+                    None => return Ok(None),
+                },
+            };
             editor.note = None;
             let act = if std::mem::take(&mut editor.asking) {
                 match key {
@@ -147,11 +201,13 @@ impl Call {
                     if text.is_empty() {
                         editor.note = Some(NOTHING);
                     } else {
+                        self.forget()?;
                         self.send(&format!("{PLAIN}\x1b[2J\x1b[H\x1b[?25h"))?;
                         return Ok(Some(text));
                     }
                 }
                 Act::Leave => {
+                    self.forget()?;
                     self.send(&format!("{PLAIN}\x1b[2J\x1b[H\x1b[?25h"))?;
                     return Ok(None);
                 }
@@ -164,14 +220,13 @@ impl Call {
                         if !self.preview(draft, &editor.title, &text)? {
                             return Ok(None);
                         }
-                        self.forget()?;
                         all = true;
                     }
                 }
                 Act::Nothing => {}
                 Act::Press(key) => {
                     let (cols, rows) = self.window();
-                    let (width, height) = editor.room(cols, rows);
+                    let Layout { width, height, .. } = editor.layout(cols, rows);
                     editor.note = editor.text.press(&key, width, height.saturating_sub(1).max(1));
                 }
             }
@@ -223,6 +278,47 @@ impl Call {
                 }
             }
         }
+    }
+
+    /// Draws the pane at `pane`: its title, and under it what `live` makes of
+    /// `text`. The picture it showed before goes once the new one's in, so
+    /// it's never empty between them; then the cursor goes back to `cursor`.
+    fn pane(&mut self, live: LiveView, text: &str, pane: Pane, (row, col): (usize, usize)) -> io::Result<()> {
+        let mut out = format!("\x1b[?25l{PLAIN}");
+        for r in pane.row..pane.row + pane.rows {
+            out.push_str(&format!("\x1b[{};{}H\x1b[K", r + 1, pane.col + 1));
+        }
+        let title = if pane.beside {
+            cut(LIVE, pane.cols)
+        } else {
+            let title = cut(&format!("── {LIVE} "), pane.cols);
+            format!("{title}{}", "─".repeat(pane.cols.saturating_sub(title.width())))
+        };
+        out.push_str(&format!("\x1b[{};{}H{DIM}{title}{PLAIN}", pane.row + 1, pane.col + 1));
+        let (top, cols, rows) = (pane.row + 1, pane.cols.max(1), pane.rows.saturating_sub(1));
+        let old = std::mem::take(&mut self.shown);
+        let shown = if text.is_empty() { Live::Words(NOTHING_TO_SEE.to_string()) } else { live(self, text) };
+        match shown {
+            Live::Picture { png, rows: tall } => {
+                if let Some(size) = png_size(&png).filter(|_| self.is_flow() && rows > 0) {
+                    let cell = self.size().cell().filter(|&(w, h)| w > 0 && h > 0).unwrap_or(CELL);
+                    let (pc, pr) = fit(size, cell, Some(tall).filter(|&t| t > 0), cols as u16, rows as u16);
+                    let left = pane.col + cols.saturating_sub(pc as usize) / 2;
+                    let id = self.next_id();
+                    out.push_str(&picture::upload(id, &Image::png(png), 1, pc, pr));
+                    out.push_str(&picture::placeholders(id, 1, (left as u16, top as u16), pc, pr));
+                    self.shown.push(Shown::Picture(id));
+                }
+            }
+            Live::Words(words) => {
+                for (i, line) in wrapped(&printable(&words), cols).iter().take(rows).enumerate() {
+                    out.push_str(&format!("\x1b[{};{}H{DIM}{line}{PLAIN}", top + i + 1, pane.col + 1));
+                }
+            }
+        }
+        out.push_str(&deleting(old));
+        out.push_str(&format!("\x1b[{};{}H\x1b[?25h", row + 1, col + 1));
+        self.send(&out)
     }
 
     /// The caller's window, or 80 × 24 where it's unsaid.
@@ -288,6 +384,32 @@ pub(crate) struct Editor {
     note: Option<&'static str>,
     /// Asking whether to save, on the way out.
     asking: bool,
+    /// Whether the board draws a pane of what's written, and where the
+    /// cursor was last put (a row and a column, from 0).
+    live: bool,
+    cursor: (usize, usize),
+}
+
+/// Where the editor's parts go in a window: the text's room (its width in
+/// cells, a cell's margin to its left and the cell after its last left for
+/// the cursor; its height in rows), and the pane's, where there's one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Layout {
+    width: usize,
+    height: usize,
+    pane: Option<Pane>,
+}
+
+/// The pane's place: its first row and column (from 0), its size in cells,
+/// and whether it's beside the text or under it. It runs to the window's
+/// edge but for the last column, so erasing to a row's end clears its row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Pane {
+    row: usize,
+    col: usize,
+    cols: usize,
+    rows: usize,
+    beside: bool,
 }
 
 impl Editor {
@@ -295,27 +417,39 @@ impl Editor {
         let text = Text::new(draft.text, draft.max_lines, draft.max_bytes);
         let start = text.text();
         let one_line = |s: &str| printable(s).replace('\n', " ");
-        Editor { text, title: one_line(draft.title), hint: one_line(draft.hint), start, top: 0, drawn: Vec::new(), note: None, asking: false }
+        Editor { text, title: one_line(draft.title), hint: one_line(draft.hint), start, top: 0, drawn: Vec::new(), note: None, asking: false, live: draft.live.is_some(), cursor: (0, 0) }
     }
 
     fn changed(&self) -> bool {
         self.text.text() != self.start
     }
 
-    /// The text's room in a window of `cols` × `rows`: its width in cells
-    /// (a cell's margin to its left, and the window's last cell left alone,
-    /// where a cursor after the last letter of a full row goes) and its
-    /// height in rows (less the bar, the hint and the keys).
-    fn room(&self, cols: usize, rows: usize) -> (usize, usize) {
-        let width = cols.saturating_sub(2).max(10);
-        let height = rows.saturating_sub(if self.hint.is_empty() { 2 } else { 3 }).max(1);
-        (width, height)
+    /// Where things go in a window of `cols` × `rows`: the text between the
+    /// bar (and the hint) and the keys, and where the board draws a pane of
+    /// it and there's room, the pane beside it (half a wide window, a rule
+    /// between them) or under it.
+    fn layout(&self, cols: usize, rows: usize) -> Layout {
+        let first = if self.hint.is_empty() { 1 } else { 2 };
+        let total = rows.saturating_sub(first + 1).max(1);
+        let full = Layout { width: cols.saturating_sub(2).max(10), height: total, pane: None };
+        if !self.live || total < PANE_FEWEST {
+            return full;
+        }
+        if cols >= BESIDE {
+            let rule = cols - (cols / 2).min(PANE_WIDEST);
+            return Layout { width: rule - 2, height: total, pane: Some(Pane { row: first, col: rule + 2, cols: cols - rule - 3, rows: total, beside: true }) };
+        }
+        if total >= 2 * PANE_FEWEST {
+            let under = total / 2;
+            return Layout { width: full.width, height: total - under, pane: Some(Pane { row: first + total - under, col: 1, cols: cols.saturating_sub(2), rows: under, beside: false }) };
+        }
+        full
     }
 
     /// The window's rows as they should be, and where the cursor goes in it
     /// (a row and a column, from 0), scrolled to keep the cursor in sight.
     fn screen(&mut self, cols: usize, rows: usize) -> (Vec<String>, (usize, usize)) {
-        let (width, height) = self.room(cols, rows);
+        let Layout { width, height, pane } = self.layout(cols, rows);
         let shown = self.text.rows(width);
         let (r, col) = self.text.cursor(&shown);
         // Back up where the text got shorter, then on to the cursor.
@@ -331,24 +465,34 @@ impl Editor {
         let title = cut(&format!(" {}", self.title), across.saturating_sub(place.width() + 1).max(across / 2));
         let place = if title.width() + place.width() <= across { place } else { String::new() };
         let fill = " ".repeat(across.saturating_sub(title.width() + place.width()));
-        let mut out = vec![format!("{BAR}\x1b[1m{title}\x1b[22m{fill}{place}{PLAIN}")];
+        // Each row as it's drawn, erasing what's after it to the row's end
+        // but beside the pane, which it leaves alone.
+        let mut out = vec![format!("{BAR}\x1b[1m{title}\x1b[22m{fill}{place}{PLAIN}\x1b[K")];
         if !self.hint.is_empty() {
-            out.push(format!(" {DIM}{}{PLAIN}", cut(&self.hint, across - 1)));
+            out.push(format!(" {DIM}{}{PLAIN}\x1b[K", cut(&self.hint, across - 1)));
         }
         let first = out.len();
         for i in self.top..self.top + height {
-            out.push(match shown.get(i) {
-                Some(row) => format!(" {}", clip(&self.text.lines[row.line][row.start..row.end], width)),
+            let letters = match shown.get(i) {
+                Some(row) => clip(&self.text.lines[row.line][row.start..row.end], width),
                 None => String::new(),
+            };
+            out.push(match pane {
+                Some(p) if p.beside => format!(" {letters}{}{DIM}│{PLAIN}", " ".repeat((p.col - 3).saturating_sub(letters.width()))),
+                _ => format!(" {letters}{PLAIN}\x1b[K"),
             });
         }
+        // The rows of a pane under the text are the pane's to draw.
+        if let Some(p) = pane.filter(|p| !p.beside) {
+            out.extend(std::iter::repeat_n(String::new(), p.rows));
+        }
         let cursor = if self.asking {
-            out.push(format!(" {NOTE}{}{PLAIN}", cut(LEAVING, across - 1)));
+            out.push(format!(" {NOTE}{}{PLAIN}\x1b[K", cut(LEAVING, across - 1)));
             (out.len() - 1, (1 + LEAVING.width()).min(across))
         } else {
             match self.note {
-                Some(note) => out.push(format!(" {NOTE}{}{PLAIN}", cut(note, across - 1))),
-                None => out.push(format!(" {DIM}{}{PLAIN}", cut(EDIT_KEYS, across - 1))),
+                Some(note) => out.push(format!(" {NOTE}{}{PLAIN}\x1b[K", cut(note, across - 1))),
+                None => out.push(format!(" {DIM}{}{PLAIN}\x1b[K", cut(EDIT_KEYS, across - 1))),
             }
             (first + r - self.top, 1 + col.min(width))
         };
@@ -366,11 +510,13 @@ impl Editor {
             self.drawn.clear();
         }
         for (i, line) in screen.iter().enumerate() {
-            if self.drawn.get(i) != Some(line) {
-                out.push_str(&format!("\x1b[{};1H{line}{PLAIN}\x1b[K", i + 1));
+            // An empty row is the pane's to draw.
+            if self.drawn.get(i) != Some(line) && !line.is_empty() {
+                out.push_str(&format!("\x1b[{};1H{line}", i + 1));
             }
         }
         self.drawn = screen;
+        self.cursor = (row, col);
         out.push_str(&format!("\x1b[{};{}H\x1b[?25h", row + 1, col + 1));
         out
     }
@@ -1012,6 +1158,23 @@ mod tests {
         assert!(out.contains(&format!("\x1b[10;1H {DIM}↑ ↓ PgUp PgDn scroll")), "{out:?}");
         let out = page("Short", &lines[..3], 0, 40, 10);
         assert!(!out.contains("lines 1") && out.contains(&format!("{DIM}{BACK}")), "all of it in sight: no place, nothing to scroll: {out:?}");
+    }
+
+    #[test]
+    fn a_live_pane_goes_beside_the_text_in_a_wide_window_and_under_it_in_a_narrow_one() {
+        let live = |_: &Call, _: &str| Live::Words(String::new());
+        let mut e = Editor::new(&Draft { hint: "Say hello", text: "first", live: Some(&live), ..Draft::new("Live") });
+        assert_eq!(e.layout(120, 40), Layout { width: 58, height: 37, pane: Some(Pane { row: 2, col: 62, cols: 57, rows: 37, beside: true }) });
+        let all = e.draw(120, 40, true);
+        assert!(all.contains(&format!("\x1b[3;1H first{}{DIM}│{PLAIN}\x1b[4;1H", " ".repeat(54))), "the text up to the rule, the pane left alone: {all:?}");
+        assert_eq!(e.layout(200, 40).pane.map(|p| (p.col, p.cols)), Some((120, 79)), "no wider than a card needs");
+        assert_eq!(e.layout(80, 24), Layout { width: 78, height: 11, pane: Some(Pane { row: 13, col: 1, cols: 78, rows: 10, beside: false }) });
+        let all = e.draw(80, 24, true);
+        assert!(all.contains(&format!("\x1b[3;1H first{PLAIN}\x1b[K")) && all.contains("\x1b[24;1H \x1b[2mCtrl+S saves"), "the text over the pane, the keys under it: {all:?}");
+        assert!(!all.contains("\x1b[14;1H") && all.contains("\x1b[13;1H "), "the pane's rows left to it: {all:?}");
+        assert_eq!(e.layout(80, 12).pane, None, "no room for it");
+        let plain = Editor::new(&Draft { text: "first", ..Draft::new("Not live") });
+        assert_eq!(plain.layout(120, 40).pane, None, "none where the board draws none");
     }
 
     #[test]

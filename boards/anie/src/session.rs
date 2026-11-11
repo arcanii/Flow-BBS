@@ -4,6 +4,7 @@
 
 use std::io;
 use std::net::IpAddr;
+use std::sync::Arc;
 
 use flow_bbs::{printable, Call, Item, Screen};
 use postgres::Client;
@@ -23,13 +24,20 @@ const CARD: &str = "made/bulletin.png";
 /// rows left under the card. `None` where the caller isn't in Flow, the
 /// board has no faces, or the window has no room for it: the text, then.
 pub(crate) fn bulletin_page(bbs: &Bbs, call: &Call, bulletin: &str, below: u16) -> Option<Screen> {
-    let faces = bbs.typeset.as_ref().filter(|_| call.is_flow())?;
-    let (cols, rows) = ui::window(call);
-    let cell = call.size().cell().filter(|&(w, h)| w > 0 && h > 0).unwrap_or((10, 20));
-    let card = faces.card(bulletin, KICKER, cols as u16, cell, (rows as u16).saturating_sub(below + 2))?;
+    let card = bulletin_card(bbs, call, bulletin, below)?;
+    let (cols, _) = ui::window(call);
     let rule = "─".repeat(cols.saturating_sub(2).min(76));
     let shown = format!(" {{bold}}{{cyan}}The bulletin{{/}}\n {{dim}}{rule}{{/}}\n![The bulletin]({CARD}){{rows {}}}", card.rows);
     Screen::parse_with(&shown, &bbs.settings.screens, &[(CARD, &card.png)]).ok()
+}
+
+/// The card on the bulletin's page (`bulletin_page`), for a caller in
+/// Flow with faces to set it in, in a window with room for it.
+pub(crate) fn bulletin_card(bbs: &Bbs, call: &Call, bulletin: &str, below: u16) -> Option<Arc<typeset::Card>> {
+    let faces = bbs.typeset.as_ref().filter(|_| call.is_flow())?;
+    let (cols, rows) = ui::window(call);
+    let cell = call.size().cell().filter(|&(w, h)| w > 0 && h > 0).unwrap_or((10, 20));
+    faces.card(bulletin, KICKER, cols as u16, cell, (rows as u16).saturating_sub(below + 2))
 }
 
 /// A call on the board.

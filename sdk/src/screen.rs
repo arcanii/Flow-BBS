@@ -233,7 +233,7 @@ fn moves_itself(glb: &[u8]) -> bool {
 }
 
 /// A PNG's width and height, from its header.
-fn png_size(bytes: &[u8]) -> Option<(u32, u32)> {
+pub(crate) fn png_size(bytes: &[u8]) -> Option<(u32, u32)> {
     if !bytes.starts_with(b"\x89PNG\r\n\x1a\n") || bytes.get(12..16) != Some(b"IHDR") {
         return None;
     }
@@ -327,7 +327,7 @@ pub(crate) fn text(pieces: &[Piece], values: &[(&str, &str)], flow: bool, row: u
 }
 
 /// A cell's pixels where the caller's window didn't say: a common size.
-const CELL: (u32, u32) = (9, 18);
+pub(crate) const CELL: (u32, u32) = (9, 18);
 
 /// How many rows a model takes.
 const MODEL_ROWS: u16 = 10;
@@ -410,10 +410,7 @@ impl Call {
     /// Forgets the pictures and models the call put on the caller's
     /// screen, so a Flow that's had many screens holds only the last's.
     pub(crate) fn forget(&mut self) -> io::Result<()> {
-        let gone: String = self.shown.drain(..).map(|s| match s {
-            Shown::Picture(id) => picture::delete(id),
-            Shown::Model(id) => model::delete(id),
-        }).collect();
+        let gone = deleting(self.shown.drain(..));
         if gone.is_empty() {
             Ok(())
         } else {
@@ -422,10 +419,18 @@ impl Call {
     }
 }
 
+/// What takes `shown`'s pictures and models off the caller's screen.
+pub(crate) fn deleting(shown: impl IntoIterator<Item = Shown>) -> String {
+    shown.into_iter().map(|s| match s {
+        Shown::Picture(id) => picture::delete(id),
+        Shown::Model(id) => model::delete(id),
+    }).collect()
+}
+
 /// A picture of `w` × `h` pixels in cells of `cell`: `tall` rows where
 /// that's asked, else its own size, where it fits in `cols` × `rows`; else
 /// as big as fits.
-fn fit((w, h): (u32, u32), cell: (u32, u32), tall: Option<u16>, cols: u16, rows: u16) -> (u16, u16) {
+pub(crate) fn fit((w, h): (u32, u32), cell: (u32, u32), tall: Option<u16>, cols: u16, rows: u16) -> (u16, u16) {
     let up = |a: u64, b: u64| a.div_ceil(b.max(1));
     let (w, h, cw, ch) = (w as u64, h as u64, cell.0 as u64, cell.1 as u64);
     let (mut c, mut r) = match tall {

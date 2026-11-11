@@ -788,7 +788,19 @@ async fn the_sysop_writes_the_bulletin_full_screen_and_flow_sees_it_typeset_and_
     sam.send("n").await;
     let said = sam.until(EDIT_KEYS).await;
     assert!(said.contains("The bulletin") && said.contains("Welcome to the Anie Solutions BBS"), "{said:?}");
+    // In Flow, typeset beside the text (where the test has faces to set it
+    // in): the card as it is, then afresh once the typing stops.
+    if typeset {
+        let said = sam.until("\x1b_Ga=T").await;
+        assert!(said.contains("As its readers will see it"), "{said:?}");
+        sam.until("\x1b[?25h").await;
+    }
     sam.send("\x0b# Hello, \"board\"\r- Dungeon is open").await;
+    if typeset {
+        sam.until("\x1b_Ga=T").await;
+        let said = sam.until("\x1b[?25h").await;
+        assert!(said.contains("\x1b_Ga=d"), "the last card taken away once the new one's in: {said:?}");
+    }
     // Previewed as members will see it: in Flow, typeset (where the test
     // has faces to set it in), else as text.
     sam.send("\x10").await;

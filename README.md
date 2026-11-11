@@ -150,6 +150,11 @@ window), and any key goes back to writing; Ctrl+S saves, and Esc leaves,
 asking first whether to save what changed. Only printable letters are
 kept, and only the rows that changed are drawn again.
 
+A board can draw what's written as it's written, too (`Draft::live`: a
+picture, or words): the editor gives it a pane beside the text in a wide
+window and under it in a narrower one, and draws it again each time the
+caller stops typing a moment.
+
 ### Doors
 
 A door is any program on the server's PATH, in any language. It runs on
@@ -214,8 +219,8 @@ moderate the forums and triage bugs; the sysop also manages members and
 roles, forums, the tracker's products, the bulletin, and reads the log.
 Posts, bug reports and the bulletin are written in the SDK's full-screen
 editor, each previewed (Ctrl+P) as its readers will see it. In Flow the
-bulletin is typeset, as the demonstrations' page of
-type is: Noto Serif (Noto Serif CJK for Japanese, Chinese and Korean) on
+bulletin is typeset, beside its editor as it's written too, as the
+demonstrations' page of type is: Noto Serif (Noto Serif CJK for Japanese, Chinese and Korean) on
 a card of cream paper, its lines starting `# ` headlines, `## ` subheads
 and `- ` points; other terminals get it as text.
 Guests and members alike have its game room (experimental): Mines
