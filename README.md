@@ -227,8 +227,9 @@ Guests and members alike have its game room (experimental): Mines
 (`flow-mines`, from Flow-Games), each member's best time on each size kept
 for a leaderboard they share; Dungeon, the mainframe original of Zork
 (devshane/zork's C, public domain, built into its image without its
-`!` shell escape or its debugging tool, and with its parser's words
-bounded), a member's saved game kept for their next call; and Neko
+`!` shell escape or its debugging tool, with its parser's words
+bounded, and, as in 1980, a chance to be patched up after a death or
+two), a member's saved game kept for their next call; and Neko
 (`flow-cat`, a door its image carries, with Neko's notice); and its
 demonstrations: a gallery of a
 picture, a turning model, an effect and a sound; Newell's teapot, as

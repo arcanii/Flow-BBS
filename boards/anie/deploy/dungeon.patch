@@ -1,3 +1,41 @@
+diff --git a/dso3.c b/dso3.c
+index 8aa265d..084c0cb 100644
+--- a/dso3.c
++++ b/dso3.c
+@@ -175,7 +175,10 @@ L100:
+     rspeak_(q);
+ /* 						!ASK */
+     (void) fflush(stdout);
+-    (void) fgets(ans, sizeof ans, stdin);
++    if (fgets(ans, sizeof ans, stdin) == NULL) {
++/* 						!NO MORE INPUT (HUNG UP): STOP ASKING. */
++	exit_();
++    }
+     more_input();
+ /* 						!GET ANSWER */
+     if (*ans == 'Y' || *ans == 'y') {
+diff --git a/dsub.c b/dsub.c
+index c6efcda..0c3d622 100644
+--- a/dsub.c
++++ b/dsub.c
+@@ -309,11 +309,12 @@ L100:
+     }
+ /* 						!NO RECOVERY IN END GAME. */
+ 
+-// always exit for plopbot's purposes
+-	  goto L1000;
+-//    if (state_1.deaths >= 2) {
+-//	goto L1000;
+-//    }
++/* 						!devshane's copy always exited here, for */
++/* 						!a bot of theirs: the original's chance */
++/* 						!again after a death, put back. */
++    if (state_1.deaths >= 2) {
++	goto L1000;
++    }
+ 
+ /* 						!DEAD TWICE? KICK HIM OFF. */
+     if (! yesno_(10, 9, 8)) {
 diff --git a/np.c b/np.c
 index a0ab931..083b613 100644
 --- a/np.c

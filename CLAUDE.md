@@ -113,7 +113,9 @@ ssh -p 2222 guest@localhost             # call it
   folder under `ANIE_BBS_SAVES` so its SAVE keeps, a guest's in one of
   the call's; `deploy/Dockerfile` builds it from devshane/zork at a
   pinned commit with `deploy/dungeon.patch`, which takes out its `!`
-  shell escape and bounds its parser's words, and without GDT),
+  shell escape, bounds its parser's words, puts back the original's
+  "patch you?" after a death (devshane's copy always quit there) and
+  ends its yes-or-no question at the end of input, and without GDT),
   `demo.rs` (the demonstrations' menu; the pictures,
   Ánië's logo among them, in `screens/pictures`, and `type.png` set
   from `type.svg` by Inkscape), `models/` (the GLBs the demonstrations

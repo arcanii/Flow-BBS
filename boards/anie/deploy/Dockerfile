@@ -28,7 +28,10 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 
 # Dungeon, the mainframe original of Zork (public domain), from
 # devshane/zork at a pinned commit, as it is but for dungeon.patch: no `!`
-# shell escape, and a line's words kept to what its parser holds. Built
+# shell escape, a line's words kept to what its parser holds, a dead player
+# offered the original's chance again (devshane's copy ended the game at
+# every death, for a bot of theirs), and its yes-or-no question ending the
+# game when the caller's gone rather than asking on without end. Built
 # without its debugging tool (GDT) or a pager, and hardened, so a slip
 # elsewhere in its 1980s C stops the game rather than going on.
 FROM debian:trixie-slim AS dungeon
