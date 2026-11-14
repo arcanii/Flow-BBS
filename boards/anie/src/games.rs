@@ -15,7 +15,9 @@
 //! Dungeon keeps a game its player SAVEs in `dsave.dat` where it runs. A
 //! member's runs in a folder of their own under the board's saves, so
 //! RESTORE finds it on another call; a guest's in one of the call's,
-//! removed when the game ends.
+//! removed when the game ends. Dungeon starts at its beginning all the
+//! same, so the board tells a member who has a game kept when it was
+//! saved, and to RESTORE it.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -134,8 +136,16 @@ impl Session<'_> {
             None => game_folder("dungeon", self.id),
         };
         let played = folder.and_then(|folder| {
+            // The game always starts at its beginning, a game kept or not, so
+            // a member who has one is told it's there to take up.
+            let kept = match member {
+                Some(_) => match self.saved_on(&folder.join("dsave.dat"))? {
+                    Some(on) => format!("You have a game saved on {on}: type RESTORE to take it up."),
+                    None => "SAVE keeps your game here for next time, and RESTORE takes it up.".into(),
+                },
+                None => "A guest's game isn't kept: members can SAVE theirs for next time.".into(),
+            };
             self.call.clear()?;
-            let kept = if member.is_some() { "SAVE keeps your game here for next time, and RESTORE takes it up." } else { "A guest's game isn't kept: members can SAVE theirs for next time." };
             self.call.say(&format!(" {DIM}Dungeon, from MIT in 1980. HELP and INFO tell you more; QUIT leaves.\n {kept}{PLAIN}\n\n"))?;
             let mut door = Door::new(self.bbs.settings.dungeon.clone(), Vec::<String>::new());
             door.dir = Some(folder.clone());
@@ -152,6 +162,18 @@ impl Session<'_> {
             self.pause()?;
         }
         Ok(())
+    }
+
+    /// When the game kept in a file was saved, in the board's time zone as
+    /// its other dates are: nothing where there's no game kept.
+    fn saved_on(&mut self, file: &Path) -> io::Result<Option<String>> {
+        let at = match fs::metadata(file).and_then(|kept| if kept.is_file() { kept.modified() } else { Err(io::ErrorKind::NotFound.into()) }) {
+            Ok(at) => at,
+            Err(_) => return Ok(None),
+        };
+        let secs = at.duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
+        let row = self.db.query_one("SELECT to_char(to_timestamp($1), 'DD Mon YYYY \"at\" HH24:MI')", &[&secs]).db()?;
+        Ok(Some(row.get(0)))
     }
 
     /// Whatever a door left: plain colors, and the cursor back.

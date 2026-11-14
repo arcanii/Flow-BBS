@@ -770,7 +770,9 @@ async fn a_members_dungeon_is_kept_in_a_folder_of_their_own_and_taken_up_on_anot
     again.send("g").await;
     again.until(MENU_KEYS).await;
     again.send("d").await;
-    let said = again.until("\r\n>").await;
+    let said = plain(&again.until("\r\n>").await);
+    assert!(said.contains("You have a game saved on ") && said.contains(": type RESTORE to take it up."), "told it's there: {said:?}");
+    assert!(!said.contains("SAVE keeps your game here"), "{said:?}");
     assert!(said.contains("restored: kept at save"), "{said:?}");
     again.send("quit\r").await;
     again.until(MENU_KEYS).await;

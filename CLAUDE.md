@@ -113,7 +113,9 @@ ssh -p 2222 guest@localhost             # call it
   `ANIE_BBS_MINES`, each game given a data folder of its own whose
   `flow-mines/best.json` is taken in after for the leaderboard,
   `mines_best`; and Dungeon's, `ANIE_BBS_DUNGEON`, run in a member's own
-  folder under `ANIE_BBS_SAVES` so its SAVE keeps, a guest's in one of
+  folder under `ANIE_BBS_SAVES` so its SAVE keeps (the game starts
+  afresh all the same, so the board says when a member's was saved, by
+  `dsave.dat`'s time, `saved_on`), a guest's in one of
   the call's; `deploy/Dockerfile` builds it from devshane/zork at a
   pinned commit with `deploy/dungeon.patch`, which takes out its `!`
   shell escape, bounds its parser's words, puts back the original's

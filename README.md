@@ -234,7 +234,8 @@ for a leaderboard they share; Dungeon, the mainframe original of Zork
 (devshane/zork's C, public domain, built into its image without its
 `!` shell escape or its debugging tool, with its parser's words
 bounded, and, as in 1980, a chance to be patched up after a death or
-two), a member's saved game kept for their next call; and Neko
+two), a member's saved game kept for their next call, where the board
+says when it was saved and that RESTORE takes it up; and Neko
 (`flow-cat`, a door its image carries, with Neko's notice); and its
 demonstrations: a gallery of a
 picture, a turning model, an effect and a sound; Newell's teapot, as
