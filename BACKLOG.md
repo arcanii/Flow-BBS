@@ -26,6 +26,38 @@ its own repository, and `dial` its own, in arcanii/Flow-Phonebook.
     switch of their own (for a caller who'd rather the screen kept
     still), and where a guest finds the switch.
 
+- **Dungeon as a user of its own**, asked on 2026-11-10 as the precaution
+  until another approach is worked out: the Anie Solutions BBS runs its
+  Dungeon door as an unprivileged user apart from the board's own.
+  - **Why:** a door runs as the board does (`bbs`, uid 10001, in the
+    board's container), and Dungeon is 1980s C read from what callers
+    type. Patched and hardened as it is (`deploy/dungeon.patch`), a
+    memory bug left in it would still run as `bbs`, which can read the
+    board's host key and every member's saved games in its home, and the
+    board's own environment through `/proc` (its `ANIE_BBS_SECRET_KEY`,
+    which seals members' authenticator seeds, and the database's
+    password); a door's environment is cleared, but that doesn't stop it
+    reading the board's. And the container shares the machine's network.
+  - **What stands in the way:** the board's container drops every
+    capability and sets `no-new-privileges` (`deploy/compose.yaml`), and
+    Docker gives a user that isn't root no ambient capabilities, so
+    neither a setuid launcher nor one with file capabilities can switch
+    user there. Doing it in this container means loosening that, or a
+    small helper left running as root with nothing but `CAP_SETUID` and
+    `CAP_SETGID`, which starts each door as the other user on a pty the
+    board hands it over a Unix socket.
+  - **The other approach:** Dungeon in a container of its own, as a
+    user of its own, with no network, a read-only root, and its saves on
+    a volume of their own; a small server there starts a game on a pty
+    for each connection over a Unix socket in a volume the two share,
+    and the board's door relays the call to it. It keeps the board's
+    hardening as it is, and would do for any door that runs code the
+    board didn't write.
+  - **To settle first:** which of the two, and whether the board's
+    other doors (Neko and Mines, written for Flow) go the same way; then
+    who owns each member's save folder (made 0700 by whoever starts the
+    game), and what the move means for the saves kept so far.
+
 ## Doors to come
 
 - **A space trading game for many players**, moved here from Flow's
