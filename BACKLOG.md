@@ -4,6 +4,28 @@ What's planned for Flow's BBSes, roughly in the order asked for. Each item
 notes what's known about doing it. Flow itself keeps its own backlog, in
 its own repository, and `dial` its own, in arcanii/Flow-Phonebook.
 
+## Boards
+
+- **Sounds on or off**, asked for the Anie Solutions BBS on 2026-11-10
+  and again on 2026-11-14: a caller turns the board's sounds off, and on
+  again. A member's choice is kept with their profile (a column on
+  `members`, set from Profile and security, as logging in by code alone
+  is); a guest's lasts the call (a key on the welcome's menu, say).
+  - **What makes a sound now:** a screen's `{sound …}` marks (the
+    welcome's chime, the gallery's and the teapot's), sent by
+    `screen.rs` to a caller in Flow; the menu's click when a choice is
+    taken (`menu.rs`); and doors that make their own: Neko (`flow-cat`,
+    through Flow's SDK's `send_effects`) and Mines (`flow-mines`).
+    Dungeon makes none.
+  - **Known shape:** the SDK's `Call` gets a switch for its sounds that
+    `show` and the menu obey, so `flow-bbsd`'s boards can have it too;
+    doors are told as they start, since each makes its own: Mines has
+    `--no-effects`, which stills its liquid as well (look for a switch
+    for its sounds alone), and Neko would read a variable of its own.
+  - **To settle first:** whether effects on the glass (`{fx …}`) get a
+    switch of their own (for a caller who'd rather the screen kept
+    still), and where a guest finds the switch.
+
 ## Doors to come
 
 - **A space trading game for many players**, moved here from Flow's
