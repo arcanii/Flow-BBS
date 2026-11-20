@@ -881,6 +881,7 @@ dependencies = [
  "portable-pty",
  "rand",
  "russh",
+ "serde_json",
  "tokio",
  "unicode-width",
 ]
@@ -900,6 +901,13 @@ version = "0.1.0"
 dependencies = [
  "flow-sdk",
  "png",
+]
+
+[[package]]
+name = "flow-doord"
+version = "0.1.0"
+dependencies = [
+ "flow-bbs",
 ]
 
 [[package]]

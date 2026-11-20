@@ -50,37 +50,44 @@ const KEPT: &[&str] = &[
 ];
 
 /// How often the call looks to see whether the door has ended.
-const LOOK: Duration = Duration::from_millis(50);
+pub(crate) const LOOK: Duration = Duration::from_millis(50);
+
+/// How `door` is run for a caller at `term`: in its folder, with none of
+/// the server's own variables but what a program needs to start, the
+/// caller's `TERM`, Flow's where they're in Flow, and the door's own. A
+/// door is any program, facing whoever calls, so a board's settings and
+/// secrets stay with the board. The door server runs its doors so too.
+pub(crate) fn command(door: &Door, term: &str, caller: &Caller) -> CommandBuilder {
+    let mut command = CommandBuilder::new(&door.program);
+    command.args(&door.args);
+    if let Some(dir) = &door.dir {
+        command.cwd(dir);
+    }
+    command.env_clear();
+    for name in KEPT {
+        if let Some(value) = std::env::var_os(name) {
+            command.env(name, value);
+        }
+    }
+    command.env("TERM", term);
+    if let Caller::Flow { version } = caller {
+        command.env("TERM_PROGRAM", FLOW);
+        if let Some(v) = version {
+            command.env("TERM_PROGRAM_VERSION", v);
+        }
+    }
+    for (name, value) in &door.env {
+        command.env(name, value);
+    }
+    command
+}
 
 impl Call {
     /// Runs `door` for the caller until it ends, and gives its exit code;
     /// `None` if the caller hung up first, which ends the door.
     pub fn door(&mut self, door: &Door) -> io::Result<Option<u32>> {
         let pty = native_pty_system().openpty(pty_size(self.size)).map_err(io::Error::other)?;
-        let mut command = CommandBuilder::new(&door.program);
-        command.args(&door.args);
-        if let Some(dir) = &door.dir {
-            command.cwd(dir);
-        }
-        // A door is any program, facing whoever calls: it gets none of the
-        // server's own variables (a board's settings and secrets) but what
-        // a program needs to start.
-        command.env_clear();
-        for name in KEPT {
-            if let Some(value) = std::env::var_os(name) {
-                command.env(name, value);
-            }
-        }
-        command.env("TERM", self.term());
-        if let Caller::Flow { version } = &self.caller {
-            command.env("TERM_PROGRAM", FLOW);
-            if let Some(v) = version {
-                command.env("TERM_PROGRAM_VERSION", v);
-            }
-        }
-        for (name, value) in &door.env {
-            command.env(name, value);
-        }
+        let command = command(door, self.term(), &self.caller);
         let mut child = pty.slave.spawn_command(command).map_err(|e| io::Error::other(format!("can't run {}: {e}", door.program.to_string_lossy())))?;
         drop(pty.slave);
         let mut keys = pty.master.take_writer().map_err(io::Error::other)?;
@@ -130,7 +137,7 @@ impl Call {
 }
 
 /// The pty's size from the caller's window, pixels where it said them.
-fn pty_size(size: Size) -> PtySize {
+pub(crate) fn pty_size(size: Size) -> PtySize {
     let px = |n: u32| n.min(u16::MAX as u32) as u16;
     PtySize { rows: size.rows.max(1), cols: size.cols.max(1), pixel_width: px(size.width), pixel_height: px(size.height) }
 }

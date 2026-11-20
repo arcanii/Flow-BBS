@@ -1,7 +1,9 @@
 # The Anie Solutions BBS on tkaniedev03
 
 The board runs in Docker on tkaniedev03 (Ubuntu 26.04, Docker 29, Compose
-5): PostgreSQL 18 and `anie-bbs`, the compose project `anie-bbs`. Every
+5): PostgreSQL 18, `anie-bbs`, and its game room's doors (`flow-doord`,
+running Neko, Mines and Dungeon) in a container of their own, the compose
+project `anie-bbs`. Every
 change to the box is a script in `box/`, signed and run through the Ánië
 console (Anie_Maint), so each is Bryan's to approve and is kept in the
 central's audit. The console signs scripts from its own roots, so the
@@ -16,7 +18,8 @@ be signed from there.
 | `/root/anie-bbs/flow-games-key` | The deploy key that reads arcanii/Flow-Games (private), for `flow-mines`: made on the box, never leaves it; read-only on GitHub |
 | `/root/anie-bbs/flow-games` | The clone of Flow-Games, root's, at the commit on `master` that `11-games-clone.sh` names: the image's second context |
 | `/root/anie-bbs/backups/` | Nightly `pg_dump`s, fourteen days |
-| volumes `anie-bbs_db`, `anie-bbs_home` | The database; the board's SSH host key, and members' saved games (`saves/`, Dungeon's under `saves/dungeon/<member>`) |
+| volumes `anie-bbs_db`, `anie-bbs_home` | The database; the board's SSH host key (and, from before the doors had a container of their own, its old `saves/`, copied by `12-move-saves.sh`) |
+| volumes `anie-bbs_doors-kept`, `anie-bbs_doors-socket` | The doors' own: members' saved games (Dungeon's under `dungeon/<member>`), the doors' user's (10002) alone; and the socket the board reaches the doors at, which only the two containers mount |
 | `127.0.0.1:5440` | PostgreSQL, the box's loopback only |
 | `0.0.0.0:2222` | The board (the host's network, so ufw decides who reaches it) |
 | `arcanii.dynu.net:50768` | The board from the internet: the router forwards it to 192.168.50.210:2222 |
@@ -34,7 +37,7 @@ opens no seed.
 | 1 | `01-inspect.sh` | Read-only: what's on the box |
 | 2 | `02-clone.sh` | The clone, at the pinned commit |
 | 3 | `03-secrets.sh` | `bbs.env` made (never over one that's there); `smtp.env`'s template |
-| 4 | `04-build.sh` | The board's image built (with Dungeon from devshane/zork, and the bulletin's Noto faces, about 55 MB, from Debian's packages), PostgreSQL's pulled |
+| 4 | `04-build.sh` | The board's image built (with the bulletin's Noto faces, about 55 MB, from Debian's packages), and its doors' (with Dungeon from devshane/zork, and Mines); PostgreSQL's pulled |
 | — | Bryan, by hand | The Gmail app password into `smtp.env` (below) |
 | 5 | `05-check-mail.sh` | Read-only: `smtp.env` in shape, and Gmail lets the board log in |
 | 6 | `06-start.sh` | Both up; waits for SSH on 2222; prints the host key's fingerprint |
@@ -46,6 +49,19 @@ opens no seed.
 | 10 | `10-games-key.sh` | Once: the deploy key for Flow-Games made (never over one that's there), its public half printed |
 | — | On GitHub | That public half added to arcanii/Flow-Games as a deploy key, read-only |
 | 11 | `11-games-clone.sh` | Flow-Games' clone, at the pinned commit; before each build from then on |
+| 12 | `12-move-saves.sh` | Once, between steps 4 and 6 when the doors first get a container of their own: members' saved games copied from the board's volume to the doors' |
+
+### The doors
+
+Neko, Mines and Dungeon run in `anie-bbs-doors-1`, by `flow-doord`, as the
+user `doors` (10002), with no network (`network_mode: none`), a read-only
+root, no capabilities, and none of the board's secrets, its host key or
+its volume: Dungeon is 1980s C that reads what callers type, so a slip in
+it has the doors' folders and nothing more. The board connects to them at
+`/run/anie-doors/doors.sock`, in a volume only the two containers mount,
+and the doors' server puts each game in a folder of its own: a member's
+Dungeon in one kept for them, anything else in one of the call's, gone
+when the game ends.
 
 ### The Gmail app password
 
@@ -79,8 +95,8 @@ number of times in it.
 
 A new version: `02-clone.sh` at the new commit, `11-games-clone.sh` at
 Flow-Games' (the same one, unless Mines is to change), `04-build.sh`,
-`06-start.sh` (compose recreates the board's container; the database and
-host key stay).
+`06-start.sh` (compose recreates the board's container and the doors'; the
+database, host key and saved games stay).
 The schema migrates itself when the board starts.
 
 A restore: stop the board (`docker compose ... stop bbs`), then

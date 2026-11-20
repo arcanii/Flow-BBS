@@ -216,6 +216,67 @@ async fn a_door_runs_on_a_pty_of_the_calls_own_with_flows_variables_and_hands_th
     assert_eq!(ended(&mut line).await, Some(0));
 }
 
+/// A door server of the test's own, at the socket it gives: one door, a
+/// shell that says what it was given and where, then keeps what it's told
+/// in its folder.
+#[cfg(unix)]
+fn door_server() -> std::path::PathBuf {
+    static SERVERS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+    let dir = std::env::temp_dir().join(format!("flow-bbs-doors-{}-{}", std::process::id(), SERVERS.fetch_add(1, std::sync::atomic::Ordering::SeqCst)));
+    std::fs::create_dir_all(&dir).unwrap();
+    let shell = flow_bbs::Door::new(
+        "/bin/sh",
+        ["-c", "printf 'door %s %s %s %s\\n' \"${TERM_PROGRAM:-none}\" \"$TERM\" \"${CARGO_PKG_NAME:-clean}\" \"$([ \"$HOME\" = \"$PWD\" ] && echo home)\"; cat given.txt; echo; stty size; read line; printf '%s' \"$line\" > kept.txt; exit 3"],
+    );
+    let doors = flow_bbs::Doors { socket: dir.join("doors.sock"), kept: dir.join("kept"), doors: [("shell".to_string(), shell)].into(), most: 4 };
+    let listener = doors.listen().unwrap();
+    let socket = doors.socket.clone();
+    std::thread::spawn(move || flow_bbs::serve_doors(doors, listener));
+    socket
+}
+
+/// A board whose door is served elsewhere: twice in a folder kept for
+/// "ann", then one the server hasn't.
+#[cfg(unix)]
+fn remote(socket: std::path::PathBuf) -> impl flow_bbs::Board {
+    move |call: &mut Call| {
+        let mut door = flow_bbs::RemoteDoor::new(&socket, "shell");
+        door.keep = Some("ann".into());
+        door.put.push(("given.txt".into(), "given to it".into()));
+        door.look.push("kept.txt".into());
+        door.take.push("kept.txt".into());
+        for _ in 0..2 {
+            let open = call.open_door(&door)?;
+            call.say(&format!("kept before: {}\n", open.modified("kept.txt").is_some()))?;
+            let ended = call.run_door(open)?;
+            call.say(&format!("door ended {:?} {:?}\n", ended.code, ended.taken.get("kept.txt")))?;
+        }
+        let none = flow_bbs::RemoteDoor::new(&socket, "nothing");
+        if let Err(e) = call.open_door(&none) {
+            call.say(&format!("{e}\n"))?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn a_door_served_elsewhere_runs_in_its_folder_with_what_it_was_given_and_gives_back_what_it_kept() {
+    let mut line = dial(serving(remote(door_server())), &[("TERM_PROGRAM", "flow-terminal")]).await;
+    let said = heard(&mut line, "30 100").await;
+    assert!(said.contains("kept before: false"), "{said:?}");
+    assert!(said.contains("door flow-terminal xterm-256color clean home"), "Flow's variables, the caller's TERM, nothing of the server's, its folder its home: {said:?}");
+    assert!(said.contains("given to it"), "the file put there: {said:?}");
+    line.data(&b"hello\r"[..]).await.unwrap();
+    let said = heard(&mut line, "30 100").await;
+    assert!(said.contains("door ended Some(3) Some(\"hello\")"), "its exit code and the file it kept: {said:?}");
+    assert!(said.contains("kept before: true"), "the folder kept, and its file seen: {said:?}");
+    line.data(&b"again\r"[..]).await.unwrap();
+    let said = heard(&mut line, "no such door").await;
+    assert!(said.contains("door ended Some(3) Some(\"again\")"), "{said:?}");
+    assert_eq!(ended(&mut line).await, Some(0));
+}
+
 /// A board that asks a name and a password, and says what it was given.
 fn asks(call: &mut Call) -> std::io::Result<()> {
     let name = call.ask("Name: ", 8)?;

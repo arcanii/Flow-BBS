@@ -1,4 +1,5 @@
-# The Anie Solutions BBS on one machine: PostgreSQL, and the board.
+# The Anie Solutions BBS on one machine: PostgreSQL, the board, and the
+# doors of its game room.
 #
 #   docker compose --env-file /root/anie-bbs/bbs.env -f boards/anie/deploy/compose.yaml up -d
 #
@@ -10,6 +11,13 @@
 # machine's own network, so the host firewall (ufw) decides who reaches its
 # port, and it sees callers' real addresses for its limits; it listens on
 # IPv4 only.
+#
+# The doors (Neko, Mines, Dungeon) run in a container of their own, as a
+# user of their own, with no network at all and none of the board's
+# secrets, its host key or its volume: a game that slips has the doors'
+# folders and nothing else. The board reaches them at a Unix socket in a
+# volume the two share (doors-socket); members' kept games are in the
+# doors' own (doors-kept).
 
 name: anie-bbs
 
@@ -32,20 +40,47 @@ services:
       timeout: 3s
       retries: 30
 
-  bbs:
+  doors:
     build:
       context: ../../..
       dockerfile: boards/anie/deploy/Dockerfile
+      target: doors
       # arcanii/Flow-Games (private), for flow-mines: the clone
       # 11-games-clone.sh keeps at a pinned commit, by its deploy key.
       additional_contexts:
         flow-games: ${ANIE_BBS_FLOW_GAMES:-/root/anie-bbs/flow-games}
+    image: anie-bbs-doors:latest
+    restart: unless-stopped
+    # An init of Docker's own as its first process, so stopping it is
+    # prompt and anything a game leaves behind is reaped.
+    init: true
+    network_mode: none
+    volumes:
+      - doors-kept:/var/lib/anie-doors
+      - doors-socket:/run/anie-doors
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
+
+  bbs:
+    build:
+      context: ../../..
+      dockerfile: boards/anie/deploy/Dockerfile
+      target: bbs
     image: anie-bbs:latest
     restart: unless-stopped
     network_mode: host
     depends_on:
       db:
         condition: service_healthy
+      doors:
+        condition: service_started
     env_file:
       - ${ANIE_BBS_SMTP_ENV:-/root/anie-bbs/smtp.env}
     environment:
@@ -56,6 +91,7 @@ services:
       ANIE_BBS_MAIL: ${ANIE_BBS_MAIL:-}
     volumes:
       - home:/var/lib/anie-bbs
+      - doors-socket:/run/anie-doors
     read_only: true
     tmpfs:
       - /tmp
@@ -67,3 +103,5 @@ services:
 volumes:
   db:
   home:
+  doors-kept:
+  doors-socket:

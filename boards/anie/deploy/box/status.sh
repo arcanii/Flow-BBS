@@ -10,10 +10,11 @@ say() { printf 'status: %s\n' "$*"; }
 sql() { docker exec anie-bbs-db-1 psql -U anie_bbs -d anie_bbs -At -c "$1" 2>&1 | head -n 1; }
 
 say "at $(date -u +%Y-%m-%dT%H:%M:%SZ), clone at $(git -c safe.directory="$REPO" -C "$REPO" rev-parse --short HEAD 2>/dev/null)"
-for c in anie-bbs-db-1 anie-bbs-bbs-1; do
+for c in anie-bbs-db-1 anie-bbs-doors-1 anie-bbs-bbs-1; do
   say "$c $(docker inspect --format '{{.State.Status}} since {{.State.StartedAt}} restarts={{.RestartCount}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}-{{end}}' "$c" 2>/dev/null || echo absent)"
 done
-say "flow-games at $(git -c safe.directory=/root/anie-bbs/flow-games -C /root/anie-bbs/flow-games rev-parse --short HEAD 2>/dev/null || echo absent), doors $(docker exec anie-bbs-bbs-1 flow-mines --version 2>&1 | head -n 1), $(docker exec anie-bbs-bbs-1 sh -c 'command -v flow-cat; command -v dungeon' 2>&1 | paste -sd ' ' -)"
+say "flow-games at $(git -c safe.directory=/root/anie-bbs/flow-games -C /root/anie-bbs/flow-games rev-parse --short HEAD 2>/dev/null || echo absent), doors $(docker exec anie-bbs-doors-1 flow-mines --version 2>&1 | head -n 1), $(docker exec anie-bbs-doors-1 sh -c 'command -v flow-cat; command -v dungeon' 2>&1 | paste -sd ' ' -)"
+say "doors as uid $(docker exec anie-bbs-doors-1 id -u 2>&1), network $(docker inspect --format '{{.HostConfig.NetworkMode}}' anie-bbs-doors-1 2>&1), socket $(docker exec anie-bbs-doors-1 sh -c 'test -S /run/anie-doors/doors.sock && echo there || echo NOT there'), dungeon-kept $(docker exec anie-bbs-doors-1 sh -c 'ls /var/lib/anie-doors/dungeon 2>/dev/null | wc -l'), board's own doors $(docker exec anie-bbs-bbs-1 sh -c 'command -v flow-cat flow-mines dungeon || echo none' 2>&1 | paste -sd ' ' -)"
 say "mines-best $(sql "SELECT count(*) FROM mines_best")"
 if ss -ltnH "sport = :2222" | grep -q .; then say "port 2222 listening"; else say "port 2222 NOT listening"; fi
 say "members $(sql "SELECT string_agg(status || '=' || n, ' ') FROM (SELECT status, count(*) n FROM members GROUP BY status ORDER BY status) s")"

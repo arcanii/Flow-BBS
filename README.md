@@ -5,7 +5,7 @@ with Flow's `dial` (or plain `ssh`), drawn with what Flow adds (pictures,
 turning models, effects on the glass, sounds) and in plain text for
 callers in other terminals.
 
-Two crates:
+Its crates:
 
 - **`flow-bbs`**, the SDK (`sdk/`): a board written in Rust. A board is a
   type with a `call`, which runs once for each caller with their `Call`:
@@ -13,6 +13,9 @@ Two crates:
   write to them. `serve` puts it behind an SSH server of its own.
 - **`flow-bbsd`**, the stock server (`server/`): a board run from a
   folder, for sysops who'd rather write files than Rust.
+- **`flow-doord`**, the door server (`doord/`): a board's doors run apart
+  from the board (a container of their own, a user of their own, no
+  network), which reaches them at a Unix socket.
 - **`anie-bbs`** (`boards/anie/`), the Anie Solutions BBS: a board in
   code with members the sysop lets in, an authenticator app at login,
   forums and a bug tracker, in PostgreSQL. It runs on tkaniedev03 in
@@ -168,6 +171,16 @@ program needs to start (`PATH`, `HOME`, the language and time zone), so a
 board's settings and secrets never reach a program that callers type at.
 When it ends, the caller is back at the menu.
 
+A door can run apart from the board, too, where it's a program the board
+would rather not trust with its files: `flow-doord` runs doors for boards
+at a Unix socket (`flow-doord --socket … --kept … mines=flow-mines`), and
+a board in code opens one with a `RemoteDoor` (`call.open_door`, then
+`call.run_door`). Each runs in a folder of its own, the server's: one
+kept between calls by a name the board gives (a member's), or one for the
+call alone, gone when the door ends. The board can put small text files
+there first, ask when a file there last changed, and have files given
+back when the door ends; nothing else of the server's reaches it.
+
 ### The cat
 
 `flow-cat` (`doors/cat`) is a door of this repository's own: Neko, the
@@ -236,7 +249,9 @@ for a leaderboard they share; Dungeon, the mainframe original of Zork
 bounded, and, as in 1980, a chance to be patched up after a death or
 two), a member's saved game kept for their next call, where the board
 says when it was saved and that RESTORE takes it up; and Neko
-(`flow-cat`, a door its image carries, with Neko's notice); and its
+(`flow-cat`, with Neko's notice). The three run in a container of their
+own (`flow-doord`), as a user of their own with no network, none of the
+board's secrets, and nothing of its own but the games' folders. And its
 demonstrations: a gallery of a
 picture, a turning model, an effect and a sound; Newell's teapot, as
 OpenGL's GLUT drew it; a hypercube turning through four dimensions; a room

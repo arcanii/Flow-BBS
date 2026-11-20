@@ -12,7 +12,8 @@
 //! in the SDK's full-screen editor, and in Flow the bulletin is typeset
 //! (`typeset`). Guests and members alike have the game room
 //! (experimental): Mines (the door `flow-mines`), its members' best times
-//! a leaderboard they share, and Neko (the door `flow-cat`); and the
+//! a leaderboard they share, Dungeon, and Neko (the door `flow-cat`),
+//! each run by a door server of its own (`games`); and the
 //! demonstrations of what Flow draws: a gallery, Newell's teapot, a
 //! hypercube, a room lit by lamps of its own, and a page of type.
 
@@ -39,7 +40,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use flow_bbs::{Call, Config, Door, Screen};
+use flow_bbs::{Call, Config, Screen};
 
 use crate::mail::Mailer;
 use crate::settings::Settings;
@@ -49,8 +50,6 @@ pub struct Bbs {
     pub settings: Settings,
     pub mailer: Box<dyn Mailer>,
     pub screens: Screens,
-    /// Neko's door, for the game room.
-    pub neko: Door,
     /// The faces the bulletin is typeset in for Flow, where it has them.
     pub typeset: Option<typeset::Typesetter>,
     /// Who's on now, by call.
@@ -152,7 +151,6 @@ impl Bbs {
     /// The board, its screens read from its folder.
     pub fn new(settings: Settings, mailer: Box<dyn Mailer>) -> io::Result<Bbs> {
         let screens = Screens::read(&settings.screens)?;
-        let neko = Door::new(settings.neko.clone(), Vec::<String>::new());
         let typeset = settings.fonts.as_deref().and_then(|folder| {
             let faces = typeset::Typesetter::load(folder);
             if faces.is_none() {
@@ -160,7 +158,7 @@ impl Bbs {
             }
             faces
         });
-        Ok(Bbs { settings, mailer, screens, neko, typeset, online: Mutex::default(), guard: Mutex::default(), next_call: AtomicU64::new(1) })
+        Ok(Bbs { settings, mailer, screens, typeset, online: Mutex::default(), guard: Mutex::default(), next_call: AtomicU64::new(1) })
     }
 
     /// The SDK's settings for serving it.

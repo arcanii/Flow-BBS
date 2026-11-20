@@ -39,8 +39,8 @@ struct Board {
     mail: Arc<Memory>,
     name: String,
     base: String,
-    /// Where members' games are kept between calls (read by a test of
-    /// Unix's).
+    /// Where the door server keeps members' games between calls (read by
+    /// a test of Unix's).
     #[cfg_attr(not(unix), allow(dead_code))]
     saves: std::path::PathBuf,
 }
@@ -64,18 +64,15 @@ impl Board {
         let url = format!("{}/{name}", base.rsplit_once('/').unwrap().0);
         let dir = std::env::temp_dir().join(&name);
         std::fs::create_dir_all(&dir).unwrap();
-        let (mines, dungeon) = (stand_in_for_mines(&dir), stand_in_for_dungeon(&dir));
+        let doors = dir.join("doors.sock");
+        serve_doors(&dir, &doors);
         let env = [
             ("ANIE_BBS_DATABASE_URL", url.clone()),
             ("ANIE_BBS_SECRET_KEY", KEY.into()),
             ("ANIE_BBS_MAIL", "dev".into()),
             ("ANIE_BBS_SCREENS", concat!(env!("CARGO_MANIFEST_DIR"), "/screens").into()),
             ("ANIE_BBS_HOST_KEY", dir.join("host_key").display().to_string()),
-            // A door that ends at once, standing in for flow-cat.
-            ("ANIE_BBS_NEKO", if cfg!(windows) { "hostname" } else { "true" }.into()),
-            ("ANIE_BBS_MINES", mines),
-            ("ANIE_BBS_DUNGEON", dungeon),
-            ("ANIE_BBS_SAVES", dir.join("saves").display().to_string()),
+            ("ANIE_BBS_DOORS", doors.display().to_string()),
             // Faces to typeset the bulletin in, where the test's machine has them.
             ("ANIE_BBS_FONTS", std::env::var("ANIE_BBS_TEST_FONTS").unwrap_or_default()),
         ];
@@ -126,13 +123,37 @@ impl Board {
     }
 }
 
+/// The game room's doors, served as the board's image serves them (by the
+/// SDK's door server, flow-doord's), at `socket`: stand-ins for Mines and
+/// Dungeon, and for Neko a door that ends at once; their kept folders in
+/// `dir`'s `saves`. Elsewhere than Unix there's no door server, so the
+/// game room's doors aren't there.
+fn serve_doors(dir: &std::path::Path, socket: &std::path::Path) {
+    #[cfg(unix)]
+    {
+        use flow_bbs::Door;
+        let none = Vec::<String>::new;
+        let doors = flow_bbs::Doors {
+            socket: socket.to_path_buf(),
+            kept: dir.join("saves"),
+            doors: [("neko", Door::new("true".to_string(), none())), ("mines", Door::new(stand_in_for_mines(dir), none())), ("dungeon", Door::new(stand_in_for_dungeon(dir), none()))]
+                .into_iter()
+                .map(|(name, door)| (name.to_string(), door))
+                .collect(),
+            most: 8,
+        };
+        let listener = doors.listen().unwrap();
+        std::thread::spawn(move || flow_bbs::serve_doors(doors, listener));
+    }
+    #[cfg(not(unix))]
+    let _ = (dir, socket);
+}
+
 /// A door standing in for flow-mines, in `dir`: it says the best times it
 /// was given, then takes a time for Small from the caller's keys and keeps
-/// it as a win there would. On Windows, a door that ends at once.
+/// it as a win there would.
+#[cfg(unix)]
 fn stand_in_for_mines(dir: &std::path::Path) -> String {
-    if cfg!(windows) {
-        return "hostname".into();
-    }
     let script = dir.join("mines.sh");
     std::fs::write(
         &script,
@@ -144,21 +165,22 @@ fn stand_in_for_mines(dir: &std::path::Path) -> String {
          printf '{\"Small\": %s}' \"$secs\" > \"$kept\"\n",
     )
     .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
+    executable(&script)
+}
+
+/// Makes a stand-in runnable, and gives its path.
+#[cfg(unix)]
+fn executable(script: &std::path::Path) -> String {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(script, std::fs::Permissions::from_mode(0o755)).unwrap();
     script.display().to_string()
 }
 
 /// A stand-in for Dungeon: says where it runs and whether it has the
 /// server's variables, takes up a game kept there, and keeps one on
-/// SAVE, until QUIT. On Windows, a program that ends.
+/// SAVE, until QUIT.
+#[cfg(unix)]
 fn stand_in_for_dungeon(dir: &std::path::Path) -> String {
-    if cfg!(windows) {
-        return "hostname".into();
-    }
     let script = dir.join("dungeon.sh");
     std::fs::write(
         &script,
@@ -175,12 +197,7 @@ fn stand_in_for_dungeon(dir: &std::path::Path) -> String {
          done\n",
     )
     .unwrap();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
-    script.display().to_string()
+    executable(&script)
 }
 
 impl Drop for Board {
@@ -635,17 +652,6 @@ async fn a_forgotten_password_is_set_anew_by_a_code_to_the_members_address() {
     assert!(said.contains("The bulletin"), "{said:?}");
 }
 
-impl Caller {
-    /// Waits for a door to open: on Windows its pty asks the caller's
-    /// terminal where its cursor is first, and is answered.
-    async fn door_opened(&mut self) {
-        if cfg!(windows) {
-            self.until("\x1b[6n").await;
-            self.send("\x1b[1;1R").await;
-        }
-    }
-}
-
 #[tokio::test]
 async fn a_guest_finds_the_demonstrations_and_the_game_room_where_neko_mines_and_dungeon_hand_the_call_back() {
     let Some(board) = Board::new("games") else { return };
@@ -692,20 +698,29 @@ async fn a_guest_finds_the_demonstrations_and_the_game_room_where_neko_mines_and
         assert!(text.contains(item), "{item:?} in {text:?}");
     }
 
+    // Elsewhere than Unix there's no door server to reach: the door says
+    // it isn't there, and the call goes on.
+    if cfg!(not(unix)) {
+        guest.send("n").await;
+        assert!(plain(&guest.go_on().await).contains("Neko won't come out just now."));
+        guest.until(MENU_KEYS).await;
+        guest.send("b").await;
+        guest.until(MENU_KEYS).await;
+        guest.send("q").await;
+        guest.until("Goodbye.").await;
+        return;
+    }
+
     guest.send("n").await;
-    guest.door_opened().await;
     let said = guest.until(MENU_KEYS).await;
     assert!(!said.contains("won't come out"), "the door opened, ended, and handed the call back: {said:?}");
     assert!(said.contains("\x1b[0m\x1b[?25h"), "plain colors and the cursor after it");
 
     // A guest's game: their time is theirs, and the board keeps none.
     guest.send("m").await;
-    guest.door_opened().await;
-    if cfg!(unix) {
-        guest.answer("time: ", "42.5").await;
-        let said = plain(&guest.go_on().await);
-        assert!(said.contains("You cleared Small in 0:42.5.") && said.contains("apply from the welcome"), "{said:?}");
-    }
+    guest.answer("time: ", "42.5").await;
+    let said = plain(&guest.go_on().await);
+    assert!(said.contains("You cleared Small in 0:42.5.") && said.contains("apply from the welcome"), "{said:?}");
     let said = guest.until(MENU_KEYS).await;
     assert!(!said.contains("isn't here"), "{said:?}");
     assert_eq!(board.sql(|db| db.query_one("SELECT count(*) FROM mines_best", &[]).unwrap().get::<_, i64>(0)), 0);
@@ -716,22 +731,17 @@ async fn a_guest_finds_the_demonstrations_and_the_game_room_where_neko_mines_and
     guest.until(MENU_KEYS).await;
 
     // A guest's Dungeon runs in a folder of the call's, which goes when the
-    // game ends; and like every door it has none of the board's variables.
+    // game ends; and like every door it has none of the server's variables.
     guest.send("d").await;
-    guest.door_opened().await;
-    if cfg!(unix) {
-        let said = plain(&guest.until(", clean\r\n").await);
-        assert!(said.contains("A guest's game isn't kept"), "{said:?}");
-        let folder = said.rsplit("dungeon in ").next().unwrap().trim_end_matches(", clean\r\n").to_string();
-        assert!(folder.contains("anie-bbs-dungeon-"), "{folder:?}");
-        guest.send("save\r").await;
-        guest.until("Saved.").await;
-        guest.send("quit\r").await;
-        guest.until(MENU_KEYS).await;
-        assert!(!std::path::Path::new(&folder).exists(), "a guest's game isn't kept: {folder}");
-    } else {
-        guest.until(MENU_KEYS).await;
-    }
+    let said = plain(&guest.until(", clean\r\n").await);
+    assert!(said.contains("A guest's game isn't kept"), "{said:?}");
+    let folder = said.rsplit("dungeon in ").next().unwrap().trim_end_matches(", clean\r\n").to_string();
+    assert!(folder.contains("flow-doors-dungeon-"), "{folder:?}");
+    guest.send("save\r").await;
+    guest.until("Saved.").await;
+    guest.send("quit\r").await;
+    guest.until(MENU_KEYS).await;
+    assert!(!std::path::Path::new(&folder).exists(), "a guest's game isn't kept: {folder}");
 
     guest.send("b").await;
     guest.until(MENU_KEYS).await;

@@ -69,7 +69,21 @@ ssh -p 2222 guest@localhost             # call it
   caller's keys to the pty, its output to the caller from a thread of its
   own, resizes passed on, Flow's variables set; the server's own
   environment cleared but for `KEPT` (`PATH`, `HOME`, the locale), so a
-  board's secrets never reach a door.
+  board's secrets never reach a door. `command` is how a door is run,
+  for the door server too.
+- `sdk/src/remote.rs`: doors served elsewhere, the board's side:
+  `RemoteDoor` (a socket, a door's name, a folder kept by name or the
+  call's, text files to put, look at and take), `Call::open_door` (an
+  `OpenDoor`, its files' times) and `Call::run_door` (an `Ended`, its code
+  and the files given back; a hang-up still waits for them); and the
+  frames both sides write (a kind, a length, the bytes: hello, ready and
+  refused, end in JSON). Unix sockets only; elsewhere the door isn't there.
+- `sdk/src/door_server.rs` (Unix): `Doors` and `serve_doors`, the server's
+  side: a connection a door, its hello checked (names, paths kept in the
+  folder, no links followed), its folder made 0700 (kept under
+  `<kept>/<door>/<name>`, or the call's in the temporary folder, removed
+  before the end is said), `HOME` and `XDG_DATA_HOME` the folder, at most
+  `most` at once. `doord/`: `flow-doord`, its command line.
 - `server/src/main.rs`: `flow-bbsd`, reading `board.toml` (menus, items,
   doors; every name checked at the start) and running a call through its
   menus.
@@ -109,14 +123,14 @@ ssh -p 2222 guest@localhost             # call it
   `gets_in`, with failed logins capped a day as well as in a row: past
   `DAY_CAP` a handle is `held` and takes a mailed code too, until its
   member proves their address), `forums.rs`, `tracker.rs`, `sysop.rs`, `games.rs`
-  (the game room: Neko's door, `ANIE_BBS_NEKO`; Mines',
-  `ANIE_BBS_MINES`, each game given a data folder of its own whose
-  `flow-mines/best.json` is taken in after for the leaderboard,
-  `mines_best`; and Dungeon's, `ANIE_BBS_DUNGEON`, run in a member's own
-  folder under `ANIE_BBS_SAVES` so its SAVE keeps (the game starts
-  afresh all the same, so the board says when a member's was saved, by
-  `dsave.dat`'s time, `saved_on`), a guest's in one of
-  the call's; `deploy/Dockerfile` builds it from devshane/zork at a
+  (the game room: its doors `neko`, `mines` and `dungeon`, all the door
+  server's at `ANIE_BBS_DOORS`, in a container of their own as
+  `deploy/compose.yaml` has it: Mines' best times put in its folder and
+  `flow-mines/best.json` taken back for the leaderboard, `mines_best`;
+  Dungeon in a folder kept by the member's number so its SAVE keeps (the
+  game starts afresh all the same, so the board asks when `dsave.dat`
+  last changed and says it, `saved_on`), a guest's in one of the call's;
+  `deploy/Dockerfile` builds it from devshane/zork at a
   pinned commit with `deploy/dungeon.patch`, which takes out its `!`
   shell escape, bounds its parser's words, puts back the original's
   "patch you?" after a death (devshane's copy always quit there) and
@@ -142,8 +156,12 @@ ssh -p 2222 guest@localhost             # call it
   typeset beside it as it's written, in Flow (`session::bulletin_card`,
   the card a member with the sysop's window would see). What a
   caller is told never says which part of a login was wrong, or whether
-  an address is a member's. `deploy/`: its Dockerfile, compose file, and
-  the signed scripts that run it on tkaniedev03 (`deploy/README.md`).
+  an address is a member's. `deploy/`: its Dockerfile (two images, the
+  board's `bbs` and the doors' `doors`, user 10002), compose file (the
+  doors with no network, sharing only the socket's volume with the
+  board), and the signed scripts that run it on tkaniedev03
+  (`deploy/README.md`; `12-move-saves.sh` copied members' saves from the
+  board's volume to the doors' once).
 - `boards/example`: the example board, its banner drawn in code once
   (`pictures/banner.png`) and a crystal (`pictures/crystal.obj`); its doors
   are `flow-cat` and `flow-mines`, which must be on the server's PATH.

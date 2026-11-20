@@ -1,32 +1,34 @@
 //! The game room (experimental), for guests and members: Neko, the cat
 //! that chases the pointer; Mines, whose members' best times make a
 //! leaderboard they share; and Dungeon, the mainframe original of Zork.
-//! Each is a door on the server's PATH: `flow-cat` (this repository's
-//! `doors/cat`), `flow-mines` (Flow-Games') and `dungeon` (devshane/zork's
-//! C, built into the board's image as deploy/Dockerfile says).
+//! Each is a door the door server at `ANIE_BBS_DOORS` runs (the SDK's
+//! `RemoteDoor`; `flow-doord`, in a container of its own as a user of its
+//! own, with no network, as deploy/compose.yaml has it), so a slip in a
+//! game reaches none of the board's secrets, its host key, or the network:
+//! `neko` (`flow-cat`, this repository's `doors/cat`), `mines`
+//! (`flow-mines`, Flow-Games') and `dungeon` (devshane/zork's C, built as
+//! deploy/Dockerfile says). Each game runs in a folder of its own, the
+//! server's: a member's Dungeon in one kept for them, the rest in one of
+//! the call's, gone when the game ends.
 //!
 //! Mines keeps a best time for each of its sizes in `flow-mines/best.json`
-//! under its data folder. Each game gets a folder of its own for that
-//! (`XDG_DATA_HOME`), a member's times from the board put in it first, so
-//! the game says what they have to beat and writes a time down only when
-//! it's beaten; the board takes in what it wrote when the door ends. A
-//! guest's times are theirs alone, and go nowhere.
+//! in its folder (`XDG_DATA_HOME`). A member's times from the board are put
+//! there first, so the game says what they have to beat and writes a time
+//! down only when it's beaten; the server gives back what it wrote when
+//! the door ends, and the board takes it in. A guest's times are theirs
+//! alone, and go nowhere.
 //!
-//! Dungeon keeps a game its player SAVEs in `dsave.dat` where it runs. A
-//! member's runs in a folder of their own under the board's saves, so
-//! RESTORE finds it on another call; a guest's in one of the call's,
-//! removed when the game ends. Dungeon starts at its beginning all the
-//! same, so the board tells a member who has a game kept when it was
-//! saved, and to RESTORE it.
+//! Dungeon keeps a game its player SAVEs in `dsave.dat` where it runs, so
+//! a member's RESTORE finds it on another call. Dungeon starts at its
+//! beginning all the same, so the board asks the server when a member's
+//! was saved, and tells them, and to RESTORE it.
 
 use std::collections::BTreeMap;
-use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
-use flow_bbs::{Door, Item};
+use flow_bbs::{Ended, Item, RemoteDoor};
 
-use crate::crypto;
 use crate::db::Db;
 use crate::session::Session;
 use crate::ui::{self, BOLD, CYAN, DIM, GREEN, PLAIN, YELLOW};
@@ -42,11 +44,16 @@ const SLOWEST: f64 = 24.0 * 3600.0;
 /// where it's further down).
 const SHOWN: usize = 10;
 
-/// The best times in a Mines file, for its sizes: nothing where there's
-/// no file, or it isn't Mines', and no entry that isn't a time.
-pub fn bests(file: &Path) -> BTreeMap<String, f64> {
-    let Ok(text) = fs::read_to_string(file) else { return BTreeMap::new() };
-    let Ok(serde_json::Value::Object(kept)) = serde_json::from_str(&text) else { return BTreeMap::new() };
+/// Mines' file of best times, in its folder.
+const MINES_BESTS: &str = "flow-mines/best.json";
+
+/// Dungeon's saved game, in its folder.
+const DUNGEON_SAVE: &str = "dsave.dat";
+
+/// The best times in a Mines file, for its sizes: nothing where it isn't
+/// Mines', and no entry that isn't a time.
+pub fn bests(text: &str) -> BTreeMap<String, f64> {
+    let Ok(serde_json::Value::Object(kept)) = serde_json::from_str(text) else { return BTreeMap::new() };
     SIZES
         .iter()
         .filter_map(|&(size, _)| {
@@ -60,26 +67,6 @@ pub fn bests(file: &Path) -> BTreeMap<String, f64> {
 pub fn clock(secs: f64) -> String {
     let tenths = (secs * 10.0).floor() as u64;
     format!("{}:{:02}.{}", tenths / 600, tenths / 10 % 60, tenths % 10)
-}
-
-/// A new folder for one game's data, unlike any other's: the game, the
-/// call's number and a random tag, in the system's temporary folder (the
-/// container's tmpfs).
-fn game_folder(game: &str, call: u64) -> io::Result<PathBuf> {
-    let tag = data_encoding::HEXLOWER.encode(&crypto::random::<8>());
-    let folder = std::env::temp_dir().join(format!("anie-bbs-{game}-{call}-{tag}"));
-    own_folder(false).create(&folder)?;
-    Ok(folder)
-}
-
-/// Makes folders that are their owner's alone, where there are owners
-/// (and the folders above them, where `above`).
-fn own_folder(above: bool) -> fs::DirBuilder {
-    let mut builder = fs::DirBuilder::new();
-    builder.recursive(above);
-    #[cfg(unix)]
-    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
-    builder
 }
 
 impl Session<'_> {
@@ -109,11 +96,17 @@ impl Session<'_> {
         }
     }
 
+    /// One of the door server's doors, by name, in a folder of the call's.
+    fn door(&self, name: &str) -> RemoteDoor {
+        RemoteDoor::new(&self.bbs.settings.doors, name)
+    }
+
     /// Neko's door, and back.
     fn neko(&mut self) -> io::Result<()> {
         self.doing("Watching Neko");
         self.call.clear()?;
-        let opened = self.call.door(&self.bbs.neko);
+        let door = self.door("neko");
+        let opened = self.call.open_door(&door).and_then(|open| self.call.run_door(open));
         self.after_door()?;
         if let Err(e) = opened {
             eprintln!("anie-bbs: door neko: {e}");
@@ -123,37 +116,27 @@ impl Session<'_> {
         Ok(())
     }
 
-    /// A game of Dungeon: a member's in their own folder of saves, kept, a
-    /// guest's in one of the call's, gone when it ends.
+    /// A game of Dungeon: a member's in a folder kept for them (by their
+    /// number), a guest's in one of the call's, gone when it ends.
     fn dungeon(&mut self) -> io::Result<()> {
         self.doing("Playing Dungeon");
         let member = self.me.as_ref().map(|m| m.id);
-        let folder = match member {
-            Some(id) => {
-                let folder = self.bbs.settings.saves.join("dungeon").join(id.to_string());
-                own_folder(true).create(&folder).map(|_| folder)
-            }
-            None => game_folder("dungeon", self.id),
-        };
-        let played = folder.and_then(|folder| {
+        let mut door = self.door("dungeon");
+        door.keep = member.map(|id| id.to_string());
+        door.look.push(DUNGEON_SAVE.into());
+        let played = self.call.open_door(&door).and_then(|open| {
             // The game always starts at its beginning, a game kept or not, so
             // a member who has one is told it's there to take up.
             let kept = match member {
-                Some(_) => match self.saved_on(&folder.join("dsave.dat"))? {
-                    Some(on) => format!("You have a game saved on {on}: type RESTORE to take it up."),
+                Some(_) => match open.modified(DUNGEON_SAVE) {
+                    Some(at) => format!("You have a game saved on {}: type RESTORE to take it up.", self.saved_on(at)?),
                     None => "SAVE keeps your game here for next time, and RESTORE takes it up.".into(),
                 },
                 None => "A guest's game isn't kept: members can SAVE theirs for next time.".into(),
             };
             self.call.clear()?;
             self.call.say(&format!(" {DIM}Dungeon, from MIT in 1980. HELP and INFO tell you more; QUIT leaves.\n {kept}{PLAIN}\n\n"))?;
-            let mut door = Door::new(self.bbs.settings.dungeon.clone(), Vec::<String>::new());
-            door.dir = Some(folder.clone());
-            let ran = self.call.door(&door);
-            if member.is_none() {
-                let _ = fs::remove_dir_all(&folder);
-            }
-            ran
+            self.call.run_door(open)
         });
         self.after_door()?;
         if let Err(e) = played {
@@ -164,16 +147,12 @@ impl Session<'_> {
         Ok(())
     }
 
-    /// When the game kept in a file was saved, in the board's time zone as
-    /// its other dates are: nothing where there's no game kept.
-    fn saved_on(&mut self, file: &Path) -> io::Result<Option<String>> {
-        let at = match fs::metadata(file).and_then(|kept| if kept.is_file() { kept.modified() } else { Err(io::ErrorKind::NotFound.into()) }) {
-            Ok(at) => at,
-            Err(_) => return Ok(None),
-        };
-        let secs = at.duration_since(std::time::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
+    /// When a game was saved, in the board's time zone as its other dates
+    /// are.
+    fn saved_on(&mut self, at: SystemTime) -> io::Result<String> {
+        let secs = at.duration_since(SystemTime::UNIX_EPOCH).map_or(0.0, |d| d.as_secs_f64());
         let row = self.db.query_one("SELECT to_char(to_timestamp($1), 'DD Mon YYYY \"at\" HH24:MI')", &[&secs]).db()?;
-        Ok(Some(row.get(0)))
+        Ok(row.get(0))
     }
 
     /// Whatever a door left: plain colors, and the cursor back.
@@ -192,16 +171,10 @@ impl Session<'_> {
             Some(id) => self.db.query("SELECT size, seconds FROM mines_best WHERE member_id = $1", &[&id]).db()?.iter().map(|r| (r.get(0), r.get(1))).collect(),
             None => BTreeMap::new(),
         };
-        let played = game_folder("mines", self.id).and_then(|folder| {
-            let file = folder.join("flow-mines").join("best.json");
-            let ran = self.play_mines(&folder, &file, &before);
-            let after = bests(&file);
-            let _ = fs::remove_dir_all(&folder);
-            ran.map(|_| after)
-        });
+        let played = self.play_mines(&before);
         self.after_door()?;
         let after = match played {
-            Ok(after) => after,
+            Ok(ended) => ended.taken.get(MINES_BESTS).map(|text| bests(text)).unwrap_or_default(),
             Err(e) => {
                 eprintln!("anie-bbs: door mines: {e}");
                 ui::oops(self.call, "Mines isn't here just now. Please try again later.")?;
@@ -257,18 +230,17 @@ impl Session<'_> {
         Ok(())
     }
 
-    /// Mines' door, `before` in its file first.
-    fn play_mines(&mut self, folder: &Path, file: &Path, before: &BTreeMap<String, f64>) -> io::Result<()> {
-        if let Some(dir) = file.parent() {
-            fs::create_dir_all(dir)?;
-        }
+    /// Mines' door, `before` in its file first, and what's in the file when
+    /// it ends given back.
+    fn play_mines(&mut self, before: &BTreeMap<String, f64>) -> io::Result<Ended> {
+        let mut door = self.door("mines");
         if !before.is_empty() {
-            fs::write(file, serde_json::to_string(before).map_err(io::Error::other)?)?;
+            door.put.push((MINES_BESTS.into(), serde_json::to_string(before).map_err(io::Error::other)?));
         }
-        let mut door = Door::new(self.bbs.settings.mines.clone(), Vec::<String>::new());
-        door.env.push(("XDG_DATA_HOME".into(), folder.to_string_lossy().into_owned()));
+        door.take.push(MINES_BESTS.into());
         self.call.clear()?;
-        self.call.door(&door).map(|_| ())
+        let open = self.call.open_door(&door)?;
+        self.call.run_door(open)
     }
 
     /// The leaderboard: each size's fastest members, and the caller's own
@@ -334,16 +306,9 @@ mod tests {
 
     #[test]
     fn only_the_sizes_times_are_taken_from_a_mines_file() {
-        let dir = std::env::temp_dir().join(format!("anie-bbs-bests-{}", std::process::id()));
-        fs::create_dir_all(&dir).unwrap();
-        let file = dir.join("best.json");
-        fs::write(&file, r#"{"Small": 9.25, "Medium": "fast", "Large": -3, "Custom": 1.0, "Huge": 2.0}"#).unwrap();
-        assert_eq!(bests(&file), BTreeMap::from([("Small".to_string(), 9.25)]));
-        fs::write(&file, r#"{"Medium": 1e300, "Large": 400.5}"#).unwrap();
-        assert_eq!(bests(&file), BTreeMap::from([("Large".to_string(), 400.5)]), "a time past a day is none");
-        fs::write(&file, "[1, 2]").unwrap();
-        assert!(bests(&file).is_empty(), "not Mines' file");
-        assert!(bests(&dir.join("none.json")).is_empty(), "no file");
-        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(bests(r#"{"Small": 9.25, "Medium": "fast", "Large": -3, "Custom": 1.0, "Huge": 2.0}"#), BTreeMap::from([("Small".to_string(), 9.25)]));
+        assert_eq!(bests(r#"{"Medium": 1e300, "Large": 400.5}"#), BTreeMap::from([("Large".to_string(), 400.5)]), "a time past a day is none");
+        assert!(bests("[1, 2]").is_empty(), "not Mines' file");
+        assert!(bests("").is_empty(), "nothing in it");
     }
 }

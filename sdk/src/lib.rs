@@ -36,10 +36,13 @@
 
 mod call;
 mod door;
+#[cfg(unix)]
+mod door_server;
 mod edit;
 mod input;
 mod key;
 mod menu;
+mod remote;
 mod screen;
 mod server;
 
@@ -51,6 +54,9 @@ use std::time::Duration;
 
 pub use call::{Call, Caller, Size, FLOW};
 pub use door::Door;
+#[cfg(unix)]
+pub use door_server::{serve_doors, Doors};
+pub use remote::{Ended, OpenDoor, RemoteDoor};
 pub use edit::{Draft, Live, LiveView, Preview, Previewer, EDIT_KEYS};
 pub use input::printable;
 pub use flow_sdk as flow;

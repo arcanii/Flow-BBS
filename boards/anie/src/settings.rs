@@ -8,10 +8,7 @@
 //! | `ANIE_BBS_ADDRESS` | Where it listens (`0.0.0.0:2222`) |
 //! | `ANIE_BBS_HOST_KEY` | Its SSH host key, made there the first time (`host_key`) |
 //! | `ANIE_BBS_SCREENS` | The folder of its screens and their pictures (`screens`) |
-//! | `ANIE_BBS_NEKO` | Neko's door, the game room's cat (`flow-cat`, on the PATH) |
-//! | `ANIE_BBS_MINES` | Mines' door, the game room's (`flow-mines`, on the PATH) |
-//! | `ANIE_BBS_DUNGEON` | Dungeon's door, the game room's (`dungeon`, on the PATH) |
-//! | `ANIE_BBS_SAVES` | The folder where members' games are kept between calls (`saves`) |
+//! | `ANIE_BBS_DOORS` | The socket of the door server (`flow-doord`) that runs the game room's doors, `neko`, `mines` and `dungeon`, and keeps members' games between calls (`doors.sock`) |
 //! | `ANIE_BBS_FONTS` | A folder of faces (Noto Serif, Noto Sans, Noto Serif CJK) the bulletin is typeset in for Flow; unset, it's text |
 //! | `ANIE_BBS_NAME` | Its name (`Anie Solutions BBS`) |
 //! | `ANIE_BBS_TIME_ZONE` | The zone its times are shown in (`Asia/Tokyo`) |
@@ -34,10 +31,7 @@ pub struct Settings {
     pub database_url: String,
     pub keys: Keys,
     pub screens: PathBuf,
-    pub neko: String,
-    pub mines: String,
-    pub dungeon: String,
-    pub saves: PathBuf,
+    pub doors: PathBuf,
     pub fonts: Option<PathBuf>,
     pub zone: String,
     pub sysop_mail: Option<String>,
@@ -70,10 +64,7 @@ impl Settings {
             database_url: need("ANIE_BBS_DATABASE_URL")?,
             keys: Keys::from_hex(&need("ANIE_BBS_SECRET_KEY")?)?,
             screens: present("ANIE_BBS_SCREENS").unwrap_or("screens".into()).into(),
-            neko: present("ANIE_BBS_NEKO").unwrap_or("flow-cat".into()),
-            mines: present("ANIE_BBS_MINES").unwrap_or("flow-mines".into()),
-            dungeon: present("ANIE_BBS_DUNGEON").unwrap_or("dungeon".into()),
-            saves: present("ANIE_BBS_SAVES").unwrap_or("saves".into()).into(),
+            doors: present("ANIE_BBS_DOORS").unwrap_or("doors.sock".into()).into(),
             fonts: present("ANIE_BBS_FONTS").map(PathBuf::from),
             zone,
             sysop_mail: present("ANIE_BBS_SYSOP_MAIL"),

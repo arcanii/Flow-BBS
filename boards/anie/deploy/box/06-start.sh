@@ -1,6 +1,6 @@
 #!/bin/bash
-# Anie Solutions BBS on tkaniedev03, step 6: starts the database and the board from the images step
-# 4 built, and waits until the database is healthy and the board answers SSH on 2222. Then prints
+# Anie Solutions BBS on tkaniedev03, step 6: starts the database, the doors and the board from the
+# images step 4 built, and waits until the database is healthy and the board answers SSH on 2222. Then prints
 # the board's host key fingerprint (public: the phonebook pins it). Builds nothing; prints no secret.
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -20,6 +20,8 @@ for attempt in $(seq 1 60); do
 done
 say "db $db"
 say "bbs $(docker inspect --format '{{.State.Status}} restarts={{.RestartCount}}' anie-bbs-bbs-1 2>/dev/null || echo absent)"
+say "doors $(docker inspect --format '{{.State.Status}} restarts={{.RestartCount}} network={{.HostConfig.NetworkMode}}' anie-bbs-doors-1 2>/dev/null || echo absent)"
+compose logs --no-color --tail 3 doors 2>&1 | sed 's/^/start: log: /'
 compose logs --no-color --tail 8 bbs 2>&1 | sed 's/^/start: log: /'
 if [ "$db" != healthy ] || [ -z "$key" ]; then
   say "NOT UP after two minutes"

@@ -1,0 +1,12 @@
+[package]
+name = "flow-doord"
+description = "Flow's door server: a BBS's doors run apart from the board, reached over a Unix socket"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+flow-bbs = { path = "../sdk" }

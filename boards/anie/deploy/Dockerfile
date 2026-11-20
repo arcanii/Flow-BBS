@@ -1,28 +1,37 @@
-# The Anie Solutions BBS: built from the workspace (the context is the
-# repository's root), run as a user of its own from a read-only image, with
-# flow-cat (Neko, a door of the game room's) on its PATH and Neko's notice
-# beside it, as its sprites' terms ask, and flow-mines (Mines, the game
-# room's other door) from arcanii/Flow-Games, a second context (flow-games)
-# that compose.yaml names, and Dungeon (the game room's third door) built
-# from devshane/zork; and the Noto faces the bulletin is typeset in for
-# Flow. compose.yaml builds it; nothing secret goes into it:
-# Flow-Games' clone is made on the box with its deploy key, which the build
-# never sees.
+# The Anie Solutions BBS, two images from one file, built from the
+# workspace (the context is the repository's root), each run as a user of
+# its own from a read-only image:
+#
+# - `doors`: flow-doord, the door server, and the game room's doors it
+#   runs: flow-cat (Neko, with its notice beside it, as its sprites' terms
+#   ask), flow-mines (Mines) from arcanii/Flow-Games, a second context
+#   (flow-games) that compose.yaml names, and Dungeon built from
+#   devshane/zork. It holds none of the board's secrets, and compose.yaml
+#   gives it no network.
+# - `bbs` (the last, so the default): the board, and the Noto faces the
+#   bulletin is typeset in for Flow. It reaches the doors at their socket.
+#
+# compose.yaml builds them; nothing secret goes into either: Flow-Games'
+# clone is made on the box with its deploy key, which the build never sees.
 
+# The board's crates, and the doors' of this repository. The crates'
+# downloads are a cache the two Rust stages share, one at a time (locked),
+# since they build at once and would unpack a crate over each other.
 FROM rust:1.99-slim-trixie AS build
 WORKDIR /src
 COPY . .
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/src/target \
-    cargo build --release --locked -p anie-bbs -p flow-cat  && cp target/release/anie-bbs target/release/flow-cat /usr/local/bin/
+    cargo build --release --locked -p anie-bbs -p flow-cat -p flow-doord \
+ && cp target/release/anie-bbs target/release/flow-cat target/release/flow-doord /usr/local/bin/
 
 # Mines, from Flow-Games' own workspace and lock.
 FROM rust:1.99-slim-trixie AS games
 WORKDIR /games
 COPY --from=flow-games . .
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/games/target \
     cargo build --release --locked -p flow-mines && cp target/release/flow-mines /usr/local/bin/
 
@@ -63,21 +72,40 @@ RUN apt-get update && apt-get install -y --no-install-recommends fonts-noto-core
  && cp /usr/share/doc/fonts-noto-cjk/copyright /notices/fonts-noto-cjk \
  && rm -rf /var/lib/apt/lists/*
 
-FROM debian:trixie-slim
-RUN useradd --system --uid 10001 --home-dir /var/lib/anie-bbs --shell /usr/sbin/nologin bbs \
- && mkdir -p /var/lib/anie-bbs && chown bbs:bbs /var/lib/anie-bbs && chmod 700 /var/lib/anie-bbs
-COPY --from=build /usr/local/bin/anie-bbs /usr/local/bin/flow-cat /usr/local/bin/
+# The doors, as a user of their own (doors, 10002), apart from the board's:
+# a game that slips runs as that user, with the doors' folders and nothing
+# else. Members' kept games are under /var/lib/anie-doors (a volume of its
+# own), each in a folder of its own; the socket is in /run/anie-doors, a
+# volume the board's container shares. Both folders are the doors' user's,
+# in this image and the board's, so whichever container makes the volume
+# first, it's theirs.
+FROM debian:trixie-slim AS doors
+RUN groupadd --system --gid 10002 doors \
+ && useradd --system --uid 10002 --gid 10002 --home-dir /var/lib/anie-doors --shell /usr/sbin/nologin doors \
+ && mkdir -p /var/lib/anie-doors /run/anie-doors && chown doors:doors /var/lib/anie-doors /run/anie-doors \
+ && chmod 700 /var/lib/anie-doors && chmod 755 /run/anie-doors
+COPY --from=build /usr/local/bin/flow-doord /usr/local/bin/flow-cat /usr/local/bin/
 COPY --from=games /usr/local/bin/flow-mines /usr/local/bin/
 COPY --from=dungeon /usr/local/bin/dungeon /usr/local/bin/
 COPY --from=dungeon /usr/local/share/dungeon /usr/local/share/dungeon
 COPY --from=dungeon /usr/share/doc/dungeon /usr/share/doc/dungeon
+COPY doors/cat/sprites/NOTICE.md /usr/share/doc/flow-cat/NOTICE.md
+USER doors
+WORKDIR /var/lib/anie-doors
+ENTRYPOINT ["/usr/local/bin/flow-doord", "--socket", "/run/anie-doors/doors.sock", "--kept", "/var/lib/anie-doors", \
+            "neko=/usr/local/bin/flow-cat", "mines=/usr/local/bin/flow-mines", "dungeon=/usr/local/bin/dungeon"]
+
+FROM debian:trixie-slim AS bbs
+RUN useradd --system --uid 10001 --home-dir /var/lib/anie-bbs --shell /usr/sbin/nologin bbs \
+ && mkdir -p /var/lib/anie-bbs && chown bbs:bbs /var/lib/anie-bbs && chmod 700 /var/lib/anie-bbs \
+ && mkdir -p /run/anie-doors && chown 10002:10002 /run/anie-doors && chmod 755 /run/anie-doors
+COPY --from=build /usr/local/bin/anie-bbs /usr/local/bin/
 COPY --from=fonts /fonts /usr/local/share/anie-bbs/fonts
 COPY --from=fonts /notices /usr/share/doc/anie-bbs-fonts
-COPY doors/cat/sprites/NOTICE.md /usr/share/doc/flow-cat/NOTICE.md
 COPY boards/anie/screens /opt/anie-bbs/screens
 ENV ANIE_BBS_SCREENS=/opt/anie-bbs/screens \
     ANIE_BBS_HOST_KEY=/var/lib/anie-bbs/host_key \
-    ANIE_BBS_SAVES=/var/lib/anie-bbs/saves \
+    ANIE_BBS_DOORS=/run/anie-doors/doors.sock \
     ANIE_BBS_FONTS=/usr/local/share/anie-bbs/fonts
 USER bbs
 WORKDIR /var/lib/anie-bbs

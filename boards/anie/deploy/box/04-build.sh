@@ -1,6 +1,6 @@
 #!/bin/bash
-# Anie Solutions BBS on tkaniedev03, step 4: builds the board's image from the clone, and pulls
-# PostgreSQL's. Starts nothing. The build downloads the pinned base images and the crates in
+# Anie Solutions BBS on tkaniedev03, step 4: builds the board's image and its doors' from the clone,
+# and pulls PostgreSQL's. Starts nothing. The build downloads the pinned base images and the crates in
 # Cargo.lock; no secret goes into the image. Prints no secret.
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -11,7 +11,7 @@ say() { printf 'build: %s\n' "$*"; }
 
 say "start $(date -u +%Y-%m-%dT%H:%M:%SZ) at $(git -c safe.directory="$REPO" -C "$REPO" rev-parse HEAD)"
 compose pull --quiet db
-compose build --progress plain bbs
-say "images $(docker images --format '{{.Repository}}:{{.Tag}}={{.ID}}' | grep -E '^(anie-bbs|postgres):' | sort | tr '\n' ' ')"
+compose build --progress plain doors bbs
+say "images $(docker images --format '{{.Repository}}:{{.Tag}}={{.ID}}' | grep -E '^(anie-bbs|anie-bbs-doors|postgres):' | sort | tr '\n' ' ')"
 say "end $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 say "done"
