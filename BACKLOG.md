@@ -58,6 +58,71 @@ its own repository, and `dial` its own, in arcanii/Flow-Phonebook.
     who owns each member's save folder (made 0700 by whoever starts the
     game), and what the move means for the saves kept so far.
 
+- **An emulators section**, asked on 2026-11-20: a section of a board
+  (beside the Anie Solutions BBS's game room, say) where a caller runs a
+  server in QEMU from a disk image, or installs one from install media
+  the board keeps. Servers only, with no screen: the caller has the
+  machine's serial console, and nothing else.
+  - **Known shape:** QEMU is a door like the others, run on the call's
+    pty, the guest's first serial port on its standard input and output
+    (`-display none -nodefaults -serial stdio`, or `-chardev
+    stdio,signal=off` so that Ctrl+C reaches the guest and doesn't end
+    QEMU). A member's machine is a qcow2 disk of their own, kept between
+    calls as Dungeon's saves are, with a quota. It boots from the
+    install media the first time and from its own disk after that. The
+    media are read-only ISOs the sysop chooses, fetched at pinned
+    addresses with their checksums, as the image fetches devshane/zork.
+    At hundreds of megabytes to several gigabytes each, they would
+    likely live on a volume of their own rather than in the board's
+    image.
+  - **Install media on a serial line:** an installer that talks only to
+    a screen shows nothing here, and many boot menus are drawn on the
+    screen alone. Some media boot on a serial console as they are, to be
+    checked one by one. For others, the board can boot the installer's
+    own kernel and initrd straight from the ISO (`-kernel`, `-initrd`,
+    `-append "console=ttyS0,115200"`), as Debian's `install.amd/`
+    allows. Cloud images (Debian's and Ubuntu's, already on a serial
+    console, set up by cloud-init) need no install at all, if a ready
+    machine is wanted as well.
+  - **What stands in the way:**
+    - QEMU's monitor must never reach a caller. `-nographic` puts it
+      on the console behind Ctrl+A, and from it a caller could change
+      the machine, attach the host's files, and run a shell command on
+      the host (`migrate "exec:…"`). So: `-monitor none`, and QMP, if
+      the board wants it for shutting a machine down, only on a socket
+      the board alone holds. Add `-sandbox on` with `spawn=deny` and
+      `elevateprivileges=deny`.
+    - A caller is root on a whole machine, by design, so a bug in QEMU
+      would run as whoever runs it. That is the question in "Dungeon as
+      a user of its own", and more pressing here: QEMU belongs in a
+      container of its own (no board secrets, not on the host's
+      network), as that item's other approach gives.
+    - Without `/dev/kvm`, QEMU emulates every instruction, many times
+      slower, and an install could take an hour. KVM needs the device
+      passed into the container, and tkaniedev03 to have it, which needs
+      nested virtualization if it is itself a VM.
+    - The network: none by default (`-nic none`). An installer that
+      fetches its packages needs a mirror, and QEMU's user-mode network
+      would give the guest the internet as the box's own address, so
+      anything a caller does there (mail, scans) is traced to the board.
+    - A serial line carries no window size, so the guest thinks it has
+      80 × 24 until told (`stty rows … cols …`), and resizes don't reach
+      it.
+  - **To settle first:**
+    - Who gets a machine: members, or a role the sysop grants, since
+      each machine takes the box's memory, processors and disk.
+    - How many machines run at once, and each one's memory, processors,
+      disk and time a call.
+    - Which media to offer.
+    - The network: none, only a mirror or package proxy of the board's
+      (`restrict=on` with `guestfwd`), or open.
+    - What hanging up does: shut the machine down (an ACPI power-off
+      over QMP, then killed after a while), or leave it running for the
+      member to come back to, as `screen` would.
+    - How a caller gets back to the board without shutting the machine
+      down: the SDK's `Door` passes every key through, so it needs an
+      escape key of its own that it watches for (Ctrl+], as telnet's).
+
 ## Doors to come
 
 - **A space trading game for many players**, moved here from Flow's
