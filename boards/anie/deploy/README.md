@@ -18,7 +18,7 @@ be signed from there.
 | `/root/anie-bbs/flow-games-key` | The deploy key that reads arcanii/Flow-Games (private), for `flow-mines`: made on the box, never leaves it; read-only on GitHub |
 | `/root/anie-bbs/flow-games` | The clone of Flow-Games, root's, at the commit on `master` that `11-games-clone.sh` names: the image's second context |
 | `/root/anie-bbs/backups/` | Nightly `pg_dump`s, fourteen days |
-| volumes `anie-bbs_db`, `anie-bbs_home` | The database; the board's SSH host key (and, from before the doors had a container of their own, its old `saves/`, copied by `12-move-saves.sh`) |
+| volumes `anie-bbs_db`, `anie-bbs_home` | The database; the board's SSH host key |
 | volumes `anie-bbs_doors-kept`, `anie-bbs_doors-socket` | The doors' own: members' saved games (Dungeon's under `dungeon/<member>`), the doors' user's (10002) alone; and the socket the board reaches the doors at, which only the two containers mount |
 | `127.0.0.1:5440` | PostgreSQL, the box's loopback only |
 | `0.0.0.0:2222` | The board (the host's network, so ufw decides who reaches it) |
@@ -50,6 +50,7 @@ opens no seed.
 | — | On GitHub | That public half added to arcanii/Flow-Games as a deploy key, read-only |
 | 11 | `11-games-clone.sh` | Flow-Games' clone, at the pinned commit; before each build from then on |
 | 12 | `12-move-saves.sh` | Once, between steps 4 and 6 when the doors first get a container of their own: members' saved games copied from the board's volume to the doors' |
+| 13 | `13-clear-old-saves.sh` | Once, after Bryan has seen the moved games work: the old copies removed from the board's volume, each checked to have its copy in the doors' first (done 2026-11-21) |
 
 ### The doors
 
