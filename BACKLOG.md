@@ -22,6 +22,21 @@ its own repository, and `dial` its own, in arcanii/Flow-Phonebook.
     doors are told as they start, since each makes its own: Mines has
     `--no-effects`, which stills its liquid as well (look for a switch
     for its sounds alone), and Neko would read a variable of its own.
+  - **Doors served elsewhere**, asked on 2026-11-21: the game room's
+    doors are `flow-doord`'s now (a `RemoteDoor`), and its hello carries
+    no variables of the board's, only the door, its folder, the caller's
+    `TERM`, Flow's version and the window. So the switch goes as a
+    variable in the hello: a `RemoteDoor` gets variables of its own, as
+    a `Door` has, and the server sets them on the door's program. It
+    lets through only names it was told to, for each door, on its
+    command line (`--pass FLOW_SOUNDS`, say), never `PATH`, `HOME`,
+    `LD_PRELOAD` or the like, so a board can't change how a door runs.
+    One name for every door, rather than a flag for each: a variable of
+    Flow's own (`FLOW_SOUNDS=off`, say) that Flow's SDK's `send_effects`
+    obeys, so every Flow game hears it with no change of its own. Mines'
+    `--no-effects` is an argument, not a variable, so Mines would read
+    the variable too, or the server would give it the argument when the
+    variable says so.
   - **To settle first:** whether effects on the glass (`{fx …}`) get a
     switch of their own (for a caller who'd rather the screen kept
     still), and where a guest finds the switch.
