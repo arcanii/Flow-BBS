@@ -65,7 +65,11 @@ and `13-clear-old-saves.sh` (members' saves into the doors' volume, then the
 old copies gone, under root's Docker); `17-move-in.sh` (the BBS from root's
 Docker into `anie-bbs`'s, between steps 4 and 6: root's stopped for good,
 its database dumped and restored, its host key and kept games copied, the
-rows counted on both sides), with `18-move-back.sh` to go back if it failed.
+rows counted on both sides), with `18-move-back.sh` to go back if it failed;
+and `19-clear-root-bbs.sh`, which cleared what was left of the BBS in root's
+Docker (its stopped containers, their network, volumes and images), the old
+clone in `/home/bryan/flow-bbs` and the move's copies, once the BBS's own
+was checked up, so 18 has nothing to go back to now.
 
 ### The doors
 

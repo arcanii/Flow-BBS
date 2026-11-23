@@ -165,8 +165,8 @@ ssh -p 2222 guest@localhost             # call it
   the machine's user `anie-bbs` (`15-rootless.sh`; slirp4netns, so callers'
   own addresses reach the board, `16-address-check.sh`), the scripts run as
   root doing the BBS's part as that user. The numbered one-offs
-  (`12`, `13`, `17` the move into that Docker, `18` the way back) aren't
-  for running again.
+  (`12`, `13`, `17` the move into that Docker, `18` the way back, `19`
+  root's old copy cleared, so `18` is moot) aren't for running again.
 - `boards/example`: the example board, its banner drawn in code once
   (`pictures/banner.png`) and a crystal (`pictures/crystal.obj`); its doors
   are `flow-cat` and `flow-mines`, which must be on the server's PATH.
