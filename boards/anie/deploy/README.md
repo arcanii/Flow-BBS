@@ -114,6 +114,14 @@ failures in the last day, the last backup, disk, and the board's recent
 log. Approve it once with a repeat window and it can be run any number of
 times in it.
 
+`check-dungeon.sh` is read-only too, for after a game of Dungeon: whether a
+container restarted, the board's and the doors' log of the last twelve
+hours, the audit's logins (by handle, never an address), each member's kept
+folder and its `dsave.dat`, the doors' `/tmp` and what runs in their
+container, and the system disk's kernel lines since the boot. The board logs
+a door only when it fails, so a good game shows as no new lines, no game
+still running and an empty `/tmp`.
+
 A new version: `02-clone.sh` at the new commit, `11-games-clone.sh` at
 Flow-Games' (the same one, unless Mines is to change), `04-build.sh`,
 `06-start.sh` (compose recreates the board's container and the doors'; the
