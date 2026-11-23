@@ -1,16 +1,20 @@
 # The Anie Solutions BBS on one machine: PostgreSQL, the board, and the
-# doors of its game room.
+# doors of its game room, in a Docker of the BBS's own: rootless, run by
+# the machine's user anie-bbs (15-rootless.sh), so nothing here runs as the
+# machine's root, and a container that's broken out of is that user, who
+# has the BBS's files and nothing else of the machine's. As that user:
 #
-#   docker compose --env-file /root/anie-bbs/bbs.env -f boards/anie/deploy/compose.yaml up -d
+#   docker compose --env-file /srv/anie-bbs/secrets/bbs.env -f boards/anie/deploy/compose.yaml up -d
 #
 # bbs.env holds what's made on the machine and never leaves it
 # (ANIE_BBS_DB_PASSWORD, ANIE_BBS_SECRET_KEY); smtp.env the mail relay's
-# login (SMTP_*, mail.rs), written by hand. Both are root's, mode 600.
+# login (SMTP_*, mail.rs), written by hand. Both are anie-bbs's, mode 600.
 #
-# The database answers on the machine's loopback alone. The board uses the
-# machine's own network, so the host firewall (ufw) decides who reaches its
-# port, and it sees callers' real addresses for its limits; it listens on
-# IPv4 only.
+# The database answers the board alone, on the network the two share, and
+# nothing on the machine. The board's port is published on the machine's
+# IPv4 addresses by the rootless Docker's slirp4netns, which hands the
+# board each caller's real address for its limits; the host firewall (ufw)
+# decides who reaches it.
 #
 # The doors (Neko, Mines, Dungeon) run in a container of their own, as a
 # user of their own, with no network at all and none of the board's
@@ -31,8 +35,6 @@ services:
       POSTGRES_PASSWORD: ${ANIE_BBS_DB_PASSWORD:?ANIE_BBS_DB_PASSWORD is set in bbs.env}
     volumes:
       - db:/var/lib/postgresql
-    ports:
-      - "127.0.0.1:${ANIE_BBS_DB_PORT:-5440}:5432"
     shm_size: 128mb
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U anie_bbs -d anie_bbs"]
@@ -45,10 +47,11 @@ services:
       context: ../../..
       dockerfile: boards/anie/deploy/Dockerfile
       target: doors
-      # arcanii/Flow-Games (private), for flow-mines: the clone
-      # 11-games-clone.sh keeps at a pinned commit, by its deploy key.
+      # arcanii/Flow-Games (private), for flow-mines: the tree
+      # 11-games-clone.sh exports from root's clone at a pinned commit (its
+      # deploy key stays root's).
       additional_contexts:
-        flow-games: ${ANIE_BBS_FLOW_GAMES:-/root/anie-bbs/flow-games}
+        flow-games: ${ANIE_BBS_FLOW_GAMES:-/srv/anie-bbs/flow-games}
     image: anie-bbs-doors:latest
     restart: unless-stopped
     # An init of Docker's own as its first process, so stopping it is
@@ -75,18 +78,19 @@ services:
       target: bbs
     image: anie-bbs:latest
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "0.0.0.0:${ANIE_BBS_PORT:-2222}:2222"
     depends_on:
       db:
         condition: service_healthy
       doors:
         condition: service_started
     env_file:
-      - ${ANIE_BBS_SMTP_ENV:-/root/anie-bbs/smtp.env}
+      - ${ANIE_BBS_SMTP_ENV:-/srv/anie-bbs/secrets/smtp.env}
     environment:
-      ANIE_BBS_DATABASE_URL: postgres://anie_bbs:${ANIE_BBS_DB_PASSWORD}@127.0.0.1:${ANIE_BBS_DB_PORT:-5440}/anie_bbs
+      ANIE_BBS_DATABASE_URL: postgres://anie_bbs:${ANIE_BBS_DB_PASSWORD}@db:5432/anie_bbs
       ANIE_BBS_SECRET_KEY: ${ANIE_BBS_SECRET_KEY:?ANIE_BBS_SECRET_KEY is set in bbs.env}
-      ANIE_BBS_ADDRESS: ${ANIE_BBS_ADDRESS:-0.0.0.0:2222}
+      ANIE_BBS_ADDRESS: 0.0.0.0:2222
       ANIE_BBS_SYSOP_MAIL: ${ANIE_BBS_SYSOP_MAIL:-}
       ANIE_BBS_MAIL: ${ANIE_BBS_MAIL:-}
     volumes:
@@ -99,6 +103,8 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
 
 volumes:
   db:

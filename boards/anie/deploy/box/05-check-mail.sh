@@ -1,13 +1,19 @@
 #!/bin/bash
-# Anie Solutions BBS on tkaniedev03, step 5: READ-ONLY. Says whether smtp.env is in shape, then
+# Anie Solutions BBS on tkaniedev03, step 5: READ-ONLY. Says whether smtp.env (the BBS's own user's)
+# is in shape, then
 # whether Gmail lets the board log in with it (the board's own check-mail, which sends nothing).
 # NO VALUE IS EVER PRINTED: key names, lengths and the one-word class of a failure only.
 set -u
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-REPO=/home/bryan/flow-bbs
-FILE=/root/anie-bbs/smtp.env
-compose() { docker compose --env-file /root/anie-bbs/bbs.env -f "$REPO/boards/anie/deploy/compose.yaml" "$@"; }
+cd /
+BBS=anie-bbs
+BHOME=/srv/anie-bbs
+REPO=$BHOME/flow-bbs
+FILE=$BHOME/secrets/smtp.env
+BUID="$(id -u "$BBS")"
+as_bbs() { runuser -u "$BBS" -- env HOME="$BHOME" XDG_RUNTIME_DIR="/run/user/$BUID" DOCKER_HOST="unix:///run/user/$BUID/docker.sock" PATH=/usr/bin:/bin "$@"; }
+compose() { as_bbs docker compose --env-file "$BHOME/secrets/bbs.env" -f "$REPO/boards/anie/deploy/compose.yaml" "$@"; }
 bad=0
 say() { printf 'check-mail: %s\n' "$*"; }
 problem() { say "PROBLEM: $*"; bad=1; }
@@ -15,7 +21,7 @@ value() { grep -m 1 "^$1=" "$FILE" | cut -d= -f2-; }
 
 if [ -L "$FILE" ] || [ ! -f "$FILE" ]; then problem "no regular file $FILE"; say "NOT OK"; exit 0; fi
 say "file mode $(stat -c '%a %U' "$FILE")"
-[ "$(stat -c '%a %U' "$FILE")" = "600 root" ] || problem "the file is not mode 600 owned by root"
+[ "$(stat -c '%a %U' "$FILE")" = "600 $BBS" ] || problem "the file is not mode 600 owned by $BBS"
 if grep -q "$(printf '\r')" "$FILE"; then problem "the file holds a carriage return: save it with Unix line endings"; fi
 for k in SMTP_HOST SMTP_PORT SMTP_USERNAME SMTP_PASSWORD SMTP_FROM; do
   n="$(grep -c "^$k=" "$FILE")"

@@ -2,17 +2,22 @@
 # Anie Solutions BBS on tkaniedev03, before each build: arcanii/Flow-Games (private), whose
 # flow-mines the game room runs, cloned by its deploy key (10-games-key.sh) into
 # /root/anie-bbs/flow-games if it isn't there, then checked out at exactly the commit this script
-# names. The board's image is built with it as a second context (compose.yaml's flow-games).
+# names; then its tree (no .git, so no key and no history) put in the BBS's own user's home,
+# /srv/anie-bbs/flow-games, which the doors' image is built with as a second context (compose.yaml's
+# flow-games). The deploy key stays root's: the BBS's user never sees it.
 # Refuses if a tracked file in the clone is modified, or the commit isn't on the branch. GitHub's
 # host key is checked against the one 10-games-key.sh wrote. Prints no secret.
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+cd /
 
 DIR=/root/anie-bbs
 REPO=$DIR/flow-games
 ORIGIN=git@github.com:arcanii/Flow-Games.git
 BRANCH=master
 COMMIT=__GAMES_COMMIT__
+BBS=anie-bbs
+TREE=/srv/anie-bbs/flow-games
 
 say() { printf 'games: %s\n' "$*"; }
 g() { git -c safe.directory="$REPO" -C "$REPO" "$@"; }
@@ -45,4 +50,12 @@ if ! g merge-base --is-ancestor "$COMMIT" "origin/$BRANCH"; then
 fi
 g checkout --quiet --detach "$COMMIT"
 say "head $(g rev-parse HEAD)"
+
+# The tree for the build, the BBS's user's, in place of the last one.
+rm -rf "$TREE.new"
+install -d -m 700 -o "$BBS" -g "$BBS" "$TREE.new"
+g archive --format=tar HEAD | runuser -u "$BBS" -- tar -x -C "$TREE.new"
+rm -rf "$TREE"
+mv "$TREE.new" "$TREE"
+say "tree for $BBS: $(find "$TREE" -type f | wc -l) files, $(stat -c '%U %a' "$TREE")"
 say "done"

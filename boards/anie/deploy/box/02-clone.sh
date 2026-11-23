@@ -1,18 +1,20 @@
 #!/bin/bash
-# Anie Solutions BBS on tkaniedev03, step 2: the clone of arcanii/Flow-BBS (public), made as bryan
-# if it isn't there, then checked out at exactly the commit this script names. Refuses if a tracked
+# Anie Solutions BBS on tkaniedev03, step 2: the clone of arcanii/Flow-BBS (public), made as the
+# BBS's own user (anie-bbs, 15-rootless.sh) in its home if it isn't there, then checked out at exactly the commit this script names. Refuses if a tracked
 # file in the clone is modified, or the commit isn't on the branch. Prints no secret.
 set -euo pipefail
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+cd /
 
-REPO=/home/bryan/flow-bbs
-OWNER=bryan
+OWNER=anie-bbs
+OWNER_HOME=/srv/anie-bbs
+REPO=$OWNER_HOME/flow-bbs
 ORIGIN=https://github.com/arcanii/Flow-BBS.git
 BRANCH=main
 COMMIT=__COMMIT__
 
 say() { printf 'clone: %s\n' "$*"; }
-as_owner() { runuser -u "$OWNER" -- env HOME="/home/$OWNER" GIT_TERMINAL_PROMPT=0 "$@"; }
+as_owner() { runuser -u "$OWNER" -- env HOME="$OWNER_HOME" GIT_TERMINAL_PROMPT=0 "$@"; }
 g() { as_owner git -C "$REPO" "$@"; }
 
 if [ ! -d "$REPO/.git" ]; then
