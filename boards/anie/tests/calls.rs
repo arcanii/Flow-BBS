@@ -765,7 +765,10 @@ async fn a_members_dungeon_is_kept_in_a_folder_of_their_own_and_taken_up_on_anot
     let said = plain(&cleo.until(", clean\r\n").await);
     assert!(said.contains("SAVE keeps your game here for next time"), "{said:?}");
     let mine = board.saves.join("dungeon").join(id.to_string());
-    assert!(said.contains(&format!("dungeon in {}", mine.display())), "in her own folder, {}: {said:?}", mine.display());
+    // As the door's shell names it: by its real path, which on the Mac is
+    // under /private/var, where the temporary folder's /var leads.
+    let real = std::fs::canonicalize(&mine).unwrap();
+    assert!(said.contains(&format!("dungeon in {}", real.display())), "in her own folder, {}: {said:?}", real.display());
     cleo.send("save\r").await;
     cleo.until("Saved.").await;
     cleo.send("quit\r").await;

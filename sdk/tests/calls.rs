@@ -218,7 +218,9 @@ async fn a_door_runs_on_a_pty_of_the_calls_own_with_flows_variables_and_hands_th
 
 /// A door server of the test's own, at the socket it gives: one door, a
 /// shell that says what it was given and where, then keeps what it's told
-/// in its folder.
+/// in its folder. Its home and where it runs are compared as real paths:
+/// the Mac's temporary folder is under `/var`, a link to `/private/var`,
+/// which the shell's `$PWD` names and `HOME` doesn't.
 #[cfg(unix)]
 fn door_server() -> std::path::PathBuf {
     static SERVERS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
@@ -226,7 +228,7 @@ fn door_server() -> std::path::PathBuf {
     std::fs::create_dir_all(&dir).unwrap();
     let shell = flow_bbs::Door::new(
         "/bin/sh",
-        ["-c", "printf 'door %s %s %s %s\\n' \"${TERM_PROGRAM:-none}\" \"$TERM\" \"${CARGO_PKG_NAME:-clean}\" \"$([ \"$HOME\" = \"$PWD\" ] && echo home)\"; cat given.txt; echo; stty size; read line; printf '%s' \"$line\" > kept.txt; exit 3"],
+        ["-c", "printf 'door %s %s %s %s\\n' \"${TERM_PROGRAM:-none}\" \"$TERM\" \"${CARGO_PKG_NAME:-clean}\" \"$([ \"$(cd \"$HOME\" && pwd -P)\" = \"$(pwd -P)\" ] && echo home)\"; cat given.txt; echo; stty size; read line; printf '%s' \"$line\" > kept.txt; exit 3"],
     );
     let doors = flow_bbs::Doors { socket: dir.join("doors.sock"), kept: dir.join("kept"), doors: [("shell".to_string(), shell)].into(), most: 4 };
     let listener = doors.listen().unwrap();
